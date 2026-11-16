@@ -75,7 +75,7 @@ impl PyroApp {
         if let Some(t) = &self.canvas_tex {
             painter.image(t.id(), canvas, full_uv, Color32::WHITE);
         }
-        painter.rect_stroke(canvas, 0.0, UiStroke::new(1.0, Color32::from_gray(90)), UiStrokeKind::Outside);
+        painter.rect_stroke(canvas, 0.0, UiStroke::new(1.0_f32, Color32::from_gray(90)), UiStrokeKind::Outside);
         if let Some(t) = &self.sel_tex {
             painter.image(t.id(), canvas, full_uv, Color32::WHITE);
             if self.zoom < 1.0 {
@@ -87,14 +87,14 @@ impl PyroApp {
                     painter.rect_stroke(
                         r,
                         0.0,
-                        UiStroke::new(1.0, Color32::from_rgb(80, 160, 255)),
+                        UiStroke::new(1.0_f32, Color32::from_rgb(80, 160, 255)),
                         UiStrokeKind::Middle,
                     );
                 }
             }
         }
 
-        let guide = UiStroke::new(1.0, Color32::from_rgb(80, 160, 255));
+        let guide = UiStroke::new(1.0_f32, Color32::from_rgb(80, 160, 255));
         match &self.drag {
             Drag::Shape { start, current } => {
                 let r = Rect::from_two_pos(self.img_to_screen(rect, *start), self.img_to_screen(rect, *current));
@@ -125,8 +125,8 @@ impl PyroApp {
         let blocked = self.tool.edits_pixels() && self.filter_dialog.is_none() && self.layer_block().is_some();
         let show_ring = self.tool.is_brush() && !space && !blocked && ring >= MIN_RING;
         if let (true, Some(h)) = (show_ring, resp.hover_pos()) {
-            painter.circle_stroke(h, ring, UiStroke::new(1.0, Color32::WHITE));
-            painter.circle_stroke(h, ring + 1.0, UiStroke::new(1.0, Color32::BLACK));
+            painter.circle_stroke(h, ring, UiStroke::new(1.0_f32, Color32::WHITE));
+            painter.circle_stroke(h, ring + 1.0, UiStroke::new(1.0_f32, Color32::BLACK));
         }
         if self.tool == Tool::Clone {
             if let Some(src) = self.clone_source {
@@ -139,7 +139,7 @@ impl PyroApp {
                     _ => None,
                 };
                 let c = self.img_to_screen(rect, following.unwrap_or(src));
-                let s = UiStroke::new(1.5, Color32::from_rgb(255, 120, 0));
+                let s = UiStroke::new(1.5_f32, Color32::from_rgb(255, 120, 0));
                 painter.line_segment([c - Vec2::X * 8.0, c + Vec2::X * 8.0], s);
                 painter.line_segment([c - Vec2::Y * 8.0, c + Vec2::Y * 8.0], s);
             }
