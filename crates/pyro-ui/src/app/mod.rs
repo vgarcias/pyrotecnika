@@ -5,7 +5,7 @@
 mod canvas;
 mod dialogs;
 mod guard;
-mod icons;
+pub(crate) mod icons;
 mod input;
 mod panels;
 mod tools;
@@ -96,7 +96,7 @@ pub struct PyroApp {
 
 impl PyroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        icons::install(&cc.egui_ctx);
+        crate::design::fonts::install_fonts(&cc.egui_ctx);
         let ctx = cc.egui_ctx.clone();
         pyro_platform::open_files::set_waker(move || ctx.request_repaint());
         Self {

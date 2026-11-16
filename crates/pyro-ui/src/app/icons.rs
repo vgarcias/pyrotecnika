@@ -1,13 +1,12 @@
 //! Iconos de la interfaz: subconjunto de la fuente de Lucide (licencia ISC),
 //! en `assets/icons`. Al ser una fuente, egui los dibuja con su propio motor
 //! de texto: se ven nítidos a cualquier escala y se colorean como el texto.
+//! La fuente se registra junto con las demás en `design::fonts`.
 
-use std::sync::Arc;
+use eframe::egui::{Color32, FontFamily, RichText};
 
-use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, RichText};
-
-const FONT: &[u8] = include_bytes!("../../assets/icons/lucide-subset.ttf");
-const FAMILY: &str = "iconos";
+pub(crate) const FONT: &[u8] = include_bytes!("../../assets/icons/lucide-subset.ttf");
+pub(crate) const FAMILY: &str = "iconos";
 
 pub(super) const MOVE: char = '\u{e125}';
 pub(super) const SQUARE_DASHED: char = '\u{e1cb}';
@@ -23,14 +22,6 @@ pub(super) const PIPETTE: char = '\u{e13f}';
 pub(super) const CIRCLE_HELP: char = '\u{e082}';
 pub(super) const TRIANGLE_ALERT: char = '\u{e193}';
 pub(super) const CIRCLE_X: char = '\u{e088}';
-
-/// Registra la fuente de iconos como familia propia, sin tocar las demás.
-pub(super) fn install(ctx: &egui::Context) {
-    let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert(FAMILY.into(), Arc::new(FontData::from_static(FONT)));
-    fonts.families.insert(FontFamily::Name(FAMILY.into()), vec![FAMILY.into()]);
-    ctx.set_fonts(fonts);
-}
 
 /// Texto con un solo icono, del tamaño y color indicados.
 pub(super) fn text(glyph: char, size: f32, color: Color32) -> RichText {

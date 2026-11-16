@@ -4,4 +4,5 @@
 //! interfaz lee los tokens de aquí. La paleta es neutra (grises, blanco y
 //! negro) y lo activo se marca por inversión.
 
+pub(crate) mod fonts;
 pub(crate) mod tokens;
