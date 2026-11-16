@@ -12,5 +12,41 @@ pyro-platform.workspace = true
 pyro-ui.workspace = true
 eframe.workspace = true
 
+[build-dependencies]
+winresource = "0.1"
+
 [lints]
 workspace = true
+
+# Empaquetado con cargo-packager (docs/ARQUITECTURA.md §8.2). Las rutas son
+# relativas a este archivo. Los binarios se compilan antes, en release.yml.
+[package.metadata.packager]
+product-name = "Pyrotecnika"
+identifier = "io.pyrotecnika.app"
+publisher = "Pyrotecnika"
+homepage = "https://github.com/vgarcias/pyrotecnika"
+copyright = "Copyright © 2026 los autores de Pyrotecnika. MIT OR Apache-2.0."
+category = "GraphicsAndDesign"
+icons = [
+  "../../packaging/icons/32x32.png",
+  "../../packaging/icons/64x64.png",
+  "../../packaging/icons/128x128.png",
+  "../../packaging/icons/256x256.png",
+  "../../packaging/icons/512x512.png",
+  "../../packaging/icons/icon.icns",
+  "../../packaging/icons/icon.ico",
+]
+# Sin `file-associations` a propósito: en Windows el instalador NSIS se
+# volvería la app predeterminada de PNG/JPG. En macOS los tipos van en
+# packaging/macos/Info.plist con rango "Alternate" (solo "Abrir con").
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+info-plist-path = "../../packaging/macos/Info.plist"
+
+[package.metadata.packager.deb]
+depends = ["libgtk-3-0", "libxkbcommon-x11-0", "libvulkan1 | libegl1"]
+section = "graphics"

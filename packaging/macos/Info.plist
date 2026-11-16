@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Se combina con el Info.plist que genera cargo-packager. Los tipos de
+     documento usan LSHandlerRank=Alternate: Pyrotecnika aparece en
+     "Abrir con" sin quitarle a Vista Previa el papel de app predeterminada. -->
+<plist version="1.0">
+<dict>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>Imagen</string>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.png</string>
+                <string>public.jpeg</string>
+                <string>com.compuserve.gif</string>
+                <string>org.webmproject.webp</string>
+                <string>com.microsoft.bmp</string>
+                <string>public.tiff</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

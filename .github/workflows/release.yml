@@ -1,0 +1,144 @@
+name: Release
+
+# Al subir una etiqueta vX.Y.Z se compilan los instaladores de los tres SO y se
+# publican en GitHub Releases. Las versiones con guion (v0.2.0-beta.1) salen
+# como prerelease. Con "Run workflow" se compilan sin publicar (para probar).
+#
+# Instaladores (docs/ARQUITECTURA.md §8.2), por ahora sin firma de código:
+#   Windows  NSIS .exe (por usuario, sin admin)
+#   macOS    .dmg con un .app universal (Apple Silicon + Intel)
+#   Linux    .AppImage y .deb (x86_64)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PACKAGER_VERSION: 0.11.8
+
+jobs:
+  build:
+    name: Paquetes (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            formats: nsis
+          - name: macOS
+            os: macos-latest
+            formats: dmg
+          - name: Linux
+            os: ubuntu-22.04
+            formats: appimage,deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: La etiqueta coincide con la versión de Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME no coincide con la versión $version de Cargo.toml"; exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Dependencias de sistema (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev libfuse2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - name: Instalar cargo-packager
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      - name: Compilar (Windows y Linux)
+        if: runner.os != 'macOS'
+        run: cargo build --release -p pyrotecnika
+
+      - name: Compilar binario universal (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --release -p pyrotecnika --target aarch64-apple-darwin
+          cargo build --release -p pyrotecnika --target x86_64-apple-darwin
+          mkdir -p target/release
+          lipo -create -output target/release/pyrotecnika \
+            target/aarch64-apple-darwin/release/pyrotecnika \
+            target/x86_64-apple-darwin/release/pyrotecnika
+          lipo -info target/release/pyrotecnika
+
+      - name: Empaquetar
+        run: cargo packager --release -p pyrotecnika --formats ${{ matrix.formats }} --out-dir "${{ github.workspace }}/target/packages"
+
+      - name: Reunir instaladores
+        shell: bash
+        run: |
+          mkdir -p dist
+          find target/packages -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) \
+            -exec cp {} dist/ \;
+          ls -la dist
+          [ -n "$(ls dist)" ] || { echo "::error::No se generó ningún instalador"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyrotecnika-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publicar en GitHub Releases
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Sumas SHA-256
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Crear el release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          cat > notes.md <<'EOF'
+          ## Descargas
+
+          | Sistema | Archivo |
+          |---|---|
+          | Windows 10/11 (x64) | `pyrotecnika_*_x64-setup.exe` |
+          | macOS 11+ (Apple Silicon e Intel) | `.dmg` |
+          | Linux x86_64 | `.AppImage` (cualquier distribución) o `.deb` (Debian/Ubuntu) |
+
+          Los instaladores aún no están firmados:
+          - **Windows:** si aparece SmartScreen, pulsa *Más información → Ejecutar de todas formas*.
+          - **macOS:** la primera vez, clic derecho sobre la app → *Abrir*, o en *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*.
+          - **Linux (AppImage):** `chmod +x pyrotecnika_*.AppImage` y ejecútalo.
+
+          Comprueba las descargas con `SHA256SUMS.txt`.
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Pyrotecnika ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md --generate-notes $prerelease
