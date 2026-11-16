@@ -213,43 +213,48 @@ Regla de dependencias, comprobada en CI con `cargo tree`: `core ← formats ← 
 
 ## 4. Sistema de diseño visual
 
-La identidad es propia ("Pyrotecnika": brasas, chispas) y no imita el aspecto de ningún producto existente. Los tokens viven en `pyro-ui/src/design/tokens.rs`, y ningún widget usa colores literales.
+La interfaz sigue el **estándar de la categoría** (editores de imagen de escritorio) y no imita el aspecto de ningún producto concreto: la vara es la facilidad de uso y la curva de aprendizaje de Macromedia Fireworks y Paint Shop Pro, no su apariencia. El sistema vive en `crates/pyro-ui/src/design/` (tokens, fuentes, estilo de egui por tema y los pocos widgets propios) y ningún widget usa colores literales. Spec: `docs/superpowers/specs/2026-11-16-fase1-sistema-diseno-design.md`.
 
 ### 4.1 Color: tokens semánticos
 
-| Token | Oscuro | Claro | Uso |
-|---|---|---|---|
-| `bg.app` | `#16171A` | `#F3F4F6` | Fondo de la ventana |
-| `bg.panel` | `#1E2024` | `#FFFFFF` | Paneles laterales y barras |
-| `bg.raised` | `#272A30` | `#F8F9FA` | Controles, popovers |
-| `bg.canvas` | `#101114` | `#E4E6EA` | Alrededor del lienzo (neutro, no altera la percepción del color) |
-| `border.subtle` | `#353941` | `#E1E4E8` | Divisores decorativos |
-| `border.control` | `#727884` | `#8A909A` | Bordes de inputs y controles |
-| `text.primary` | `#E8EAED` | `#1B1D21` | Texto |
-| `text.secondary` | `#A4A9B3` | `#545A64` | Etiquetas y ayudas |
-| `accent` | `#FF7A3D` | `#C2410C` | Herramienta activa, selección, botón primario |
-| `on.accent` | `#1A0E07` | `#FFFFFF` | Texto sobre el acento |
-| `focus.ring` | `#6CB4FF` | `#1D6FD1` | Anillo de foco de teclado (2 px) |
-| `danger` | `#FF6B6B` | `#C62828` | Errores y acciones destructivas |
+La interfaz es **neutra**: solo grises, blanco y negro (decisión del autor, 2026-11-16). No hay color de acento; el logotipo de `logo/` se usa solo para el icono de la app y no es referencia visual. Lo activo se indica por **inversión** (fondo `active`, texto `on.active`). Los valores viven en `crates/pyro-ui/src/design/tokens.rs` y el CI rechaza literales `Color32` fuera de `crates/pyro-ui/src/design/`.
 
-**Contraste medido (WCAG 2.2) sobre `bg.panel`:**
+| Token | Oscuro | Claro | Alto contraste | Uso |
+|---|---|---|---|---|
+| `bg.app` | `#161616` | `#EAEAEA` | `#000000` | Fondo de la ventana |
+| `bg.panel` | `#1F1F1F` | `#F7F7F7` | `#000000` | Paneles laterales y barras |
+| `bg.raised` | `#2A2A2A` | `#FFFFFF` | `#000000` | Controles, popovers |
+| `bg.hover` | `#303030` | `#EDEDED` | `#1A1A1A` | Control bajo el puntero |
+| `bg.pressed` | `#333333` | `#DCDCDC` | `#333333` | Control pulsado |
+| `bg.canvas` | `#121212` | `#D6D6D6` | `#000000` | Alrededor del lienzo (neutro, no altera la percepción del color) |
+| `border.subtle` | `#333333` | `#DCDCDC` | `#FFFFFF` | Divisores decorativos |
+| `border.control` | `#7A7A7A` | `#858585` | `#FFFFFF` | Bordes de inputs y controles |
+| `text.primary` | `#EDEDED` | `#181818` | `#FFFFFF` | Texto |
+| `text.secondary` | `#A6A6A6` | `#575757` | `#FFFFFF` | Etiquetas y ayudas |
+| `text.disabled` | `#6B6B6B` | `#9A9A9A` | `#8C8C8C` | Texto deshabilitado (exento de 1.4.3) |
+| `active` | `#EDEDED` | `#181818` | `#FFFFFF` | Herramienta activa, capa activa, botón principal (fondo invertido) |
+| `on.active` | `#121212` | `#FFFFFF` | `#000000` | Texto e icono sobre `active` |
+| `focus.ring` | `#FFFFFF` | `#000000` | `#FFFFFF` | Anillo de foco de teclado (2 px) |
 
-| Par | Oscuro | Claro | Mínimo exigido |
-|---|---|---|---|
-| `text.primary` | 13.5:1 | 16.9:1 | 4.5:1 (1.4.3) ✔ |
-| `text.secondary` | 6.9:1 | 6.9:1 | 4.5:1 ✔ |
-| `accent` como texto o icono | 6.3:1 | 5.2:1 | 4.5:1 ✔ |
-| `on.accent` / `accent` | 7.3:1 | 5.2:1 | 4.5:1 ✔ |
-| `focus.ring` | 7.5:1 | 4.9:1 | 3:1 (1.4.11) ✔ |
-| `border.control` (sobre `bg.raised`) | 3.2:1 | 3.05:1 | 3:1 ✔ |
+Grosor de borde: 1 px en oscuro y claro, 2 px en alto contraste. Las superposiciones sobre la imagen (guías, selección, marca del tampón, anillo del pincel) se dibujan con un trazo negro ancho bajo uno blanco fino, legibles sobre cualquier foto. Los avisos y errores no usan color: llevan icono y texto semibold.
 
-Se ofrece además un tema de **alto contraste** (texto `#FFFFFF`/`#000000`, bordes de 2 px). El modo por defecto es "Seguir al sistema" (`dark-light` / `ctx.system_theme()`) y el usuario puede fijar claro u oscuro.
+**Contraste medido (WCAG 2.2) sobre `bg.panel`** (lo comprueba la prueba `las_tres_paletas_cumplen_wcag`):
+
+| Par | Oscuro | Claro | Alto contraste | Mínimo exigido |
+|---|---|---|---|---|
+| `text.primary` | 14.1:1 | 16.6:1 | 21:1 | 4.5:1 (1.4.3) ✔ |
+| `text.secondary` | 6.8:1 | 6.7:1 | 21:1 | 4.5:1 ✔ |
+| `on.active` / `active` | 16.0:1 | 17.8:1 | 21:1 | 4.5:1 ✔ |
+| `focus.ring` | 16.5:1 | 19.6:1 | 21:1 | 3:1 (1.4.11) ✔ |
+| `border.control` (sobre `bg.raised`) | 3.3:1 | 3.7:1 | 21:1 | 3:1 ✔ |
+
+Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro**, **Oscuro** y **Alto contraste**, este último un único tema oscuro fijo. Se eligen en Ver › Tema.
 
 ### 4.2 Tipografía
 
 - Se incluye **Inter** (OFL) en el binario para que el texto se vea igual en los tres SO; las fuentes del sistema varían entre ellos. Los valores numéricos usan **JetBrains Mono** (OFL) con dígitos tabulares.
-- Escala base (con escala de UI = 100 %): `caption 11` · `body 13` · `label 13 semibold` · `title 15` · `heading 18`.
-- **Escala de UI de 80–200 %**, independiente del DPI del monitor (`ctx.set_zoom_factor`). Se cambia con Ctrl/⌘ + `+`/`-`/`0` en los paneles; en el lienzo esas teclas hacen zoom de imagen.
+- Escala base (con escala de UI = 100 %): `caption 11` · `body 13` · `label 13 semibold` · `title 15 semibold` · `heading 18 semibold` · `mono 12`. Las fuentes son subconjuntos (latín) en `crates/pyro-ui/assets/fonts/`.
+- **Escala de UI de 80–200 %** en pasos de 10 %, independiente del DPI del monitor (`ctx.set_zoom_factor`). Se cambia **solo desde el menú** Ver › Tamaño de la interfaz. Ctrl/⌘ + `+`/`-`/`0` quedan para el zoom de la imagen: en teclados con AltGr (español, alemán…) esos atajos no se distinguen con fiabilidad según dónde esté el foco, y el zoom de teclado propio de egui (`zoom_with_keyboard`) está desactivado para que no agrande la interfaz a la vez que la imagen.
 
 ### 4.3 Espaciado, forma y elevación
 
@@ -261,12 +266,12 @@ Se ofrece además un tema de **alto contraste** (texto `#FFFFFF`/`#000000`, bord
 ### 4.4 Iconografía
 
 - Iconos de **Lucide** (licencia ISC) cargados como **subconjunto de su fuente tipográfica** (`crates/pyro-ui/assets/icons/lucide-subset.ttf`, 6 KB), no como SVG. Así egui los dibuja con su motor de texto, nítidos a cualquier escala, sin depender de `resvg` (MPL-2.0). Los iconos propios que falten se añadirán a una fuente propia con la misma retícula de 24 px y trazo de 2 px.
-- Se colorean con tokens (`text.secondary` en reposo, `accent` cuando están activos), así que funcionan en ambos temas.
+- Se colorean con tokens (`text.secondary` en reposo, `text.primary` al pasar el puntero, `on.active` sobre el fondo invertido cuando están activos), así que funcionan en los tres temas.
 - Todo icono lleva tooltip con nombre y atajo, y nombre accesible para AccessKit.
 
 ### 4.5 Estados de componente
 
-`default → hover (+4 % luminancia) → pressed (−4 %) → selected (accent) → focused (anillo de 2 px, offset de 2 px) → disabled (opacidad 40 %, sin hover)`. El foco **siempre** es visible con teclado (WCAG 2.4.7 / 2.4.11) y nunca se indica solo con color: el elemento seleccionado también lleva un borde o un fondo distinto.
+`default (bg.raised) → hover (bg.hover) → pressed (bg.pressed) → selected (inversión: fondo active, texto on.active) → focused (anillo de 2 px en focus.ring, 3 px fuera del widget) → disabled (text.disabled, sin hover)`. La selección se indica por inversión del fondo, nunca solo por un matiz de color. El foco **siempre** es visible con teclado (WCAG 2.4.7 / 2.4.11) y se ve también alrededor de un elemento invertido. El botón principal de cada diálogo (Aplicar, Guardar…, Crear, Descargar e instalar, Reiniciar ahora) usa la inversión; el resto, el botón normal.
 
 ### 4.6 Movimiento
 
@@ -459,7 +464,7 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 | Fase | Contenido | Criterio de salida |
 |---|---|---|
 | **0. Cimientos** ✔ | Workspace en crates; `app.rs` partido en módulos; backend wgpu; CI en los 3 SO; licencias; `cargo-deny`; prueba de concepto de abrir archivos en macOS | Verificado en los tres SO en el CI de GitHub (jobs `test` y `macos-open-files`) |
-| **1. Sistema de diseño** | Tokens, temas claro/oscuro/alto contraste, Inter, iconos, estados, escala de UI | Snapshots de referencia aprobados |
+| **1. Sistema de diseño** ✔ | Tokens neutros, temas claro/oscuro/alto contraste, Inter y JetBrains Mono, iconos, estados por inversión, escala de UI | Snapshots de referencia aprobados por el autor (2026-11-16; `crates/pyro-ui/tests/snapshots/`) |
 | **2. Comandos y preferencias** | Registro de comandos, atajos configurables, paleta, settings TOML, recientes en SQLite | RF-13 a RF-16 |
 | **3. No bloqueo y memoria** | Jobs con progreso y cancelación, historial por teselas, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos |
 | **4. Formato nativo y recuperación** | `.ora`, autoguardado, panic hook, pestañas | RF-08 a RF-10, RF-20 |
