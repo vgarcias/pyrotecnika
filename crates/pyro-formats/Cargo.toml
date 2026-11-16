@@ -1,0 +1,22 @@
+[package]
+name = "pyro-formats"
+description = "Apertura y exportación de imágenes de Pyrotecnika, incluidos los PNG de Fireworks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pyro-core.workspace = true
+anyhow.workspace = true
+image.workspace = true
+png.workspace = true
+color_quant.workspace = true
+webp.workspace = true
+
+[dev-dependencies]
+crc32fast.workspace = true
+
+[lints]
+workspace = true

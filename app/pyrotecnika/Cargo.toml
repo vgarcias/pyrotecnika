@@ -1,0 +1,16 @@
+[package]
+name = "pyrotecnika"
+description = "Editor de imágenes de escritorio para Windows, macOS y Linux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pyro-platform.workspace = true
+pyro-ui.workspace = true
+eframe.workspace = true
+
+[lints]
+workspace = true
