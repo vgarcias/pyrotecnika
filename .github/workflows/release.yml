@@ -90,6 +90,8 @@ jobs:
           find target/packages -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) \
             -exec cp {} dist/ \;
+          # El binario de macOS es universal aunque cargo-packager nombre el DMG por el runner (aarch64).
+          for f in dist/*_aarch64.dmg; do if [ -e "$f" ]; then mv "$f" "${f%_aarch64.dmg}_universal.dmg"; fi; done
           ls -la dist
           [ -n "$(ls dist)" ] || { echo "::error::No se generó ningún instalador"; exit 1; }
 
@@ -128,7 +130,7 @@ jobs:
           | Sistema | Archivo |
           |---|---|
           | Windows 10/11 (x64) | `pyrotecnika_*_x64-setup.exe` |
-          | macOS 11+ (Apple Silicon e Intel) | `.dmg` |
+          | macOS 11+ (Apple Silicon e Intel) | `Pyrotecnika_*_universal.dmg` |
           | Linux x86_64 | `.AppImage` (cualquier distribución) o `.deb` (Debian/Ubuntu) |
 
           Los instaladores aún no están firmados:

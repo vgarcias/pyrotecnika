@@ -24,6 +24,11 @@ workspace = true
 product-name = "Pyrotecnika"
 identifier = "io.pyrotecnika.app"
 publisher = "Pyrotecnika"
+authors = ["vgarcias (https://github.com/vgarcias)"]
+long-description = """
+Editor de imágenes de escritorio: capas y selección, pintura y retoque,
+ajustes y filtros, exportación optimizada y apertura de PNG de Fireworks.
+"""
 homepage = "https://github.com/vgarcias/pyrotecnika"
 copyright = "Copyright © 2026 los autores de Pyrotecnika. MIT OR Apache-2.0."
 category = "GraphicsAndDesign"
