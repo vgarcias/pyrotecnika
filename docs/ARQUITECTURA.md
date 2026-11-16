@@ -428,7 +428,7 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 - Feed JSON estático en HTTPS: `latest.json` en los assets del último release estable de GitHub, con versión, notas, URL y **firma minisign** por plataforma (lo genera `packaging/updater/make_latest_json.py` en `release.yml`).
 - Solo se busca cuando el usuario lo pide (*Ayuda › Buscar actualizaciones…*); la app nunca se conecta por su cuenta.
 - `pyro-platform/src/updates.rs` descarga (ureq + rustls con los certificados del SO), **verifica la firma con la clave pública incluida en el binario** (`packaging/updater-pubkey.txt`, `minisign-verify`) y aplica. Usa el formato de `cargo-packager-updater`, pero no ese crate: depende de `option-ext` (MPL-2.0), que la política de licencias excluye.
-- La llave privada y su contraseña son los secretos `CARGO_PACKAGER_SIGN_PRIVATE_KEY(_PASSWORD)` del repositorio; hay una copia en el gestor de contraseñas del mantenedor. Si se perdiera, las copias instaladas no podrían actualizarse solas.
+- La llave privada y su contraseña solo existen como secretos `CARGO_PACKAGER_SIGN_PRIVATE_KEY(_PASSWORD)` del repositorio (sin copia fuera de GitHub, por decisión del mantenedor). Si se borraran: se genera un par nuevo con `cargo packager signer generate`, se actualizan los secretos y `packaging/updater-pubkey.txt`, y las copias ya instaladas se actualizan a mano una vez.
 
 | Formato instalado | Comportamiento |
 |---|---|

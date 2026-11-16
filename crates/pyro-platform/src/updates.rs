@@ -358,6 +358,19 @@ mod tests {
         assert_eq!(m.platforms["windows-x86_64"].format, "nsis");
     }
 
+    /// Verifica un paquete real del pipeline:
+    /// `PYRO_VERIFY=ruta/paquete cargo test -p pyro-platform verifica_paquete -- --ignored`
+    /// (la firma se lee de `ruta/paquete.sig`).
+    #[test]
+    #[ignore]
+    fn verifica_paquete_del_pipeline() {
+        let path = std::path::PathBuf::from(std::env::var_os("PYRO_VERIFY").expect("define PYRO_VERIFY"));
+        let mut sig = path.clone().into_os_string();
+        sig.push(".sig");
+        let data = std::fs::read(&path).unwrap();
+        verify(&data, &std::fs::read_to_string(sig).unwrap()).unwrap();
+    }
+
     /// Consulta real a GitHub. Necesita red: `cargo test -p pyro-platform -- --ignored`.
     #[test]
     #[ignore]

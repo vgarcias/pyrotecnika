@@ -2584,14 +2584,14 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "pyro-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
 ]
 
 [[package]]
 name = "pyro-formats"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "color_quant",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "pyro-platform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "block2 0.6.2",
@@ -2622,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "pyro-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "image",
@@ -2634,7 +2634,7 @@ dependencies = [
 
 [[package]]
 name = "pyrotecnika"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "pyro-platform",
