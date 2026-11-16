@@ -8,11 +8,13 @@ use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
+use crate::design::style::ThemeChoice;
 use crate::design::widgets::{self, FocusRing};
 
 impl PyroApp {
     pub(super) fn menu_bar(&mut self, ctx: &egui::Context) {
         let mut action = None;
+        let mut theme_pick = None;
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 let mut item = |ui: &mut egui::Ui, label: &str, shortcut: &str, a: Action, enabled: bool| {
@@ -60,6 +62,27 @@ impl PyroApp {
                     item(ui, "Alejar", "Ctrl+-", Action::ZoomOut, true);
                     item(ui, "Ajustar a la ventana", "Ctrl+0", Action::Fit, true);
                     item(ui, "Tamaño real", "Ctrl+1", Action::ActualSize, true);
+                    ui.separator();
+                    ui.menu_button("Tema", |ui| {
+                        for (label, choice) in [
+                            ("Seguir al sistema", ThemeChoice::System),
+                            ("Claro", ThemeChoice::Light),
+                            ("Oscuro", ThemeChoice::Dark),
+                            ("Alto contraste", ThemeChoice::HighContrast),
+                        ] {
+                            if ui.radio(self.theme == choice, label).clicked() {
+                                theme_pick = Some(choice);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.menu_button("Tamaño de la interfaz", |ui| {
+                        item(ui, "Aumentar", "", Action::UiScaleUp, self.ui_scale < 2.0);
+                        item(ui, "Reducir", "", Action::UiScaleDown, self.ui_scale > 0.8);
+                        item(ui, "Restablecer (100 %)", "", Action::UiScaleReset, self.ui_scale != 1.0);
+                        ui.separator();
+                        ui.weak(format!("Actual: {:.0} %", self.ui_scale * 100.0));
+                    });
                 });
                 ui.menu_button("Ayuda", |ui| {
                     item(ui, "Buscar actualizaciones…", "", Action::CheckUpdates, true);
@@ -68,6 +91,9 @@ impl PyroApp {
                 });
             });
         });
+        if let Some(choice) = theme_pick {
+            action = Some(Action::SetTheme(choice));
+        }
         if let Some(a) = action {
             self.run(a, ctx);
         }

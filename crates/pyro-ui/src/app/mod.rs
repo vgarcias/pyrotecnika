@@ -29,6 +29,8 @@ use guard::{Pending, Status, Tone};
 use tools::{Drag, Tool};
 use updates::UpdateState;
 
+use crate::design::style::{apply_theme, step_scale, ThemeChoice};
+
 #[derive(Clone, Copy)]
 pub(super) enum Action {
     New,
@@ -48,6 +50,10 @@ pub(super) enum Action {
     Fit,
     ActualSize,
     CheckUpdates,
+    SetTheme(ThemeChoice),
+    UiScaleUp,
+    UiScaleDown,
+    UiScaleReset,
 }
 
 pub struct PyroApp {
@@ -92,6 +98,9 @@ pub struct PyroApp {
     title: String,
     /// Búsqueda o instalación de actualizaciones en curso (ventana abierta).
     update: Option<UpdateState>,
+    /// Ver › Tema y Ver › Tamaño de la interfaz (no se guardan hasta la fase 2).
+    theme: ThemeChoice,
+    ui_scale: f32,
 }
 
 impl PyroApp {
@@ -135,6 +144,8 @@ impl PyroApp {
             closing: false,
             title: String::new(),
             update: None,
+            theme: ThemeChoice::System,
+            ui_scale: 1.0,
         }
     }
 
@@ -207,7 +218,17 @@ impl PyroApp {
 
     pub(super) fn run(&mut self, action: Action, ctx: &egui::Context) {
         if self.filter_dialog.is_some()
-            && !matches!(action, Action::ZoomIn | Action::ZoomOut | Action::Fit | Action::ActualSize)
+            && !matches!(
+                action,
+                Action::ZoomIn
+                    | Action::ZoomOut
+                    | Action::Fit
+                    | Action::ActualSize
+                    | Action::SetTheme(_)
+                    | Action::UiScaleUp
+                    | Action::UiScaleDown
+                    | Action::UiScaleReset
+            )
         {
             self.warn("Aplica o cancela el filtro abierto primero.");
             return;
@@ -293,6 +314,18 @@ impl PyroApp {
                 self.pan = Vec2::ZERO;
             }
             Action::CheckUpdates => self.check_updates(),
+            Action::SetTheme(choice) => {
+                self.theme = choice;
+                apply_theme(ctx, choice);
+            }
+            Action::UiScaleUp | Action::UiScaleDown | Action::UiScaleReset => {
+                self.ui_scale = match action {
+                    Action::UiScaleUp => step_scale(self.ui_scale, 1),
+                    Action::UiScaleDown => step_scale(self.ui_scale, -1),
+                    _ => 1.0,
+                };
+                ctx.set_zoom_factor(self.ui_scale);
+            }
         }
     }
 

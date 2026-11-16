@@ -100,10 +100,19 @@ pub(crate) fn apply_theme(ctx: &egui::Context, choice: ThemeChoice) {
     });
 }
 
+/// Tamaño de la interfaz tras `delta` pasos de 10 %, entre 80 y 200 %.
+pub(crate) fn step_scale(current: f32, delta: i32) -> f32 {
+    let tenths = (current * 10.0).round() as i32 + delta;
+    tenths.clamp(8, 20) as f32 / 10.0
+}
+
 /// Fuentes y tema del sistema: lo primero que hace la app al arrancar.
 pub(crate) fn install(ctx: &egui::Context) {
     super::fonts::install_fonts(ctx);
     apply_theme(ctx, ThemeChoice::System);
+    // Ctrl+`+`/`-`/0 son el zoom de la imagen: egui no debe usarlos además
+    // para el tamaño de la interfaz (Ver › Tamaño de la interfaz).
+    ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
 
 /// Paleta del estilo vigente, para los widgets propios y el lienzo.
@@ -140,6 +149,24 @@ mod tests {
             let weak = style(&p).visuals.weak_text_color();
             assert!((i32::from(weak.r()) - i32::from(p.text_secondary.r())).abs() <= 1, "{weak:?}");
         }
+    }
+
+    #[test]
+    fn ctrl_mas_no_cambia_el_tamano_de_la_interfaz() {
+        // Ctrl+`+`/`-`/0 son el zoom de la imagen; el tamaño de la interfaz
+        // solo cambia desde Ver › Tamaño de la interfaz.
+        let ctx = egui::Context::default();
+        install(&ctx);
+        assert!(!ctx.options(|o| o.zoom_with_keyboard));
+    }
+
+    #[test]
+    fn escala_de_la_interfaz() {
+        assert_eq!(step_scale(1.0, 1), 1.1);
+        assert_eq!(step_scale(1.0, -1), 0.9);
+        assert_eq!(step_scale(2.0, 1), 2.0);
+        assert_eq!(step_scale(0.8, -1), 0.8);
+        assert_eq!(step_scale(1.3, -3), 1.0);
     }
 
     #[test]
