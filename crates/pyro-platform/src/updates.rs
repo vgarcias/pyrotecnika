@@ -155,6 +155,7 @@ fn verify(data: &[u8], signature_b64: &str) -> Result<(), String> {
 }
 
 /// Carpeta temporal propia, creada de nuevo y solo para este proceso.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 fn fresh_temp_dir(name: &str) -> std::io::Result<PathBuf> {
     let dir = std::env::temp_dir().join(format!("pyrotecnika-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
