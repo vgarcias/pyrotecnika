@@ -1,0 +1,15 @@
+# Normalizar saltos de línea: LF en el repo y en el working tree, en todos los SO.
+* text=auto eol=lf
+
+# Scripts de Windows sí necesitan CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
