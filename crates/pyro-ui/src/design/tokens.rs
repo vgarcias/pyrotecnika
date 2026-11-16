@@ -91,7 +91,9 @@ pub(crate) const OVERLAY_DARK: Color32 = Color32::BLACK;
 pub(crate) const CHECKER_A: Color32 = gray(204);
 pub(crate) const CHECKER_B: Color32 = gray(255);
 
-/// Razón de contraste WCAG 2.x entre dos colores (1 a 21).
+/// Razón de contraste WCAG 2.x entre dos colores (1 a 21). Lo usan las
+/// pruebas para garantizar los mínimos de cada paleta.
+#[cfg(test)]
 pub(crate) fn contrast(a: Color32, b: Color32) -> f32 {
     fn luminance(c: Color32) -> f32 {
         let ch = |v: u8| {

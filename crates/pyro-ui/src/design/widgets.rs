@@ -5,6 +5,7 @@
 use eframe::egui::{self, Color32, Id, LayerId, Order, Sense, Stroke, StrokeKind, TextWrapMode, WidgetText};
 
 use super::style::palette;
+use super::tokens::{OVERLAY_DARK, OVERLAY_LIGHT};
 use crate::app::icons;
 
 /// Rectángulo del anillo de foco: 2 px de separación más medio trazo de
@@ -26,6 +27,20 @@ impl FocusRing for egui::Response {
             painter.rect_stroke(focus_ring_rect(self.rect), 6, Stroke::new(2.0, color), StrokeKind::Middle);
         }
         self
+    }
+}
+
+/// Par de trazos de una superposición sobre la imagen: negro ancho debajo y
+/// blanco fino encima, legible sobre cualquier foto.
+pub(crate) fn overlay_strokes(width: f32) -> [Stroke; 2] {
+    [Stroke::new(width + 2.0, OVERLAY_DARK), Stroke::new(width, OVERLAY_LIGHT)]
+}
+
+/// Dibuja una forma de superposición (guía, recta, marca del tampón) con
+/// el par de trazos de [`overlay_strokes`].
+pub(crate) fn overlay_stroke(painter: &egui::Painter, width: f32, shape: impl Fn(Stroke) -> egui::Shape) {
+    for stroke in overlay_strokes(width) {
+        painter.add(shape(stroke));
     }
 }
 
@@ -123,6 +138,13 @@ mod tests {
             }
             ui_fn(ui);
         })
+    }
+
+    #[test]
+    fn la_superposicion_es_negro_ancho_bajo_blanco_fino() {
+        let [under, over] = overlay_strokes(1.0);
+        assert_eq!(under, Stroke::new(3.0, crate::design::tokens::OVERLAY_DARK));
+        assert_eq!(over, Stroke::new(1.0, crate::design::tokens::OVERLAY_LIGHT));
     }
 
     #[test]
