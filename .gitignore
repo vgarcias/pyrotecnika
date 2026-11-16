@@ -5,3 +5,8 @@
 
 # Críticas de diseño locales
 /.impeccable/
+
+# Salidas temporales de egui_kittest
+*.new.png
+*.diff.png
+*.old.png

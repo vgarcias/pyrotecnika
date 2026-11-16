@@ -124,6 +124,14 @@ pub(crate) fn palette(ctx: &egui::Context) -> &'static Palette {
     [&HIGH_CONTRAST, &LIGHT, &DARK].into_iter().find(|p| p.bg_panel == panel).unwrap_or(&DARK)
 }
 
+/// Margen interior de los paneles laterales (herramientas y propiedades).
+pub(crate) const PANEL_MARGIN: i8 = 12;
+
+/// Marco de los paneles laterales: el de egui con el margen del sistema.
+pub(crate) fn side_panel_frame(style: &egui::Style) -> egui::Frame {
+    egui::Frame::side_top_panel(style).inner_margin(PANEL_MARGIN)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +213,14 @@ mod tests {
         let _ = ctx.run(Default::default(), |_| {});
         assert_eq!(ctx.style().visuals.panel_fill, DARK.bg_panel);
         assert_eq!(*palette(&ctx), DARK);
+    }
+
+    #[test]
+    fn los_paneles_laterales_tienen_margen_de_12() {
+        let s = style(&LIGHT);
+        let frame = side_panel_frame(&s);
+        assert_eq!(frame.inner_margin, egui::Margin::same(PANEL_MARGIN));
+        assert_eq!(PANEL_MARGIN, 12);
+        assert_eq!(frame.fill, LIGHT.bg_panel);
     }
 }

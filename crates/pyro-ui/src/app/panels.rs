@@ -9,7 +9,7 @@ use pyro_core::selection::SelectMode;
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
 use crate::design::fonts::title_style;
-use crate::design::style::ThemeChoice;
+use crate::design::style::{self, ThemeChoice};
 use crate::design::widgets::{self, FocusRing};
 
 impl PyroApp {
@@ -130,8 +130,9 @@ impl PyroApp {
             &[Tool::Brush, Tool::Eraser, Tool::Clone, Tool::Blur],
             &[Tool::Bucket, Tool::Eyedropper],
         ];
-        let width = 2.0 * BUTTON + GAP + 2.0 * ctx.style().spacing.window_margin.leftf();
-        egui::SidePanel::left("herramientas").resizable(false).exact_width(width).show(ctx, |ui| {
+        let width = 2.0 * BUTTON + GAP + 2.0 * f32::from(style::PANEL_MARGIN);
+        let frame = style::side_panel_frame(&ctx.style());
+        egui::SidePanel::left("herramientas").resizable(false).exact_width(width).frame(frame).show(ctx, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
             ui.add_space(GAP);
             for (i, group) in GROUPS.iter().enumerate() {
@@ -169,7 +170,8 @@ Rueda: zoom.",
     }
 
     pub(super) fn side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("propiedades").resizable(true).default_width(280.0).show(ctx, |ui| {
+        let frame = style::side_panel_frame(&ctx.style());
+        egui::SidePanel::right("propiedades").resizable(true).default_width(280.0).frame(frame).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 self.tool_options(ui);
                 ui.separator();

@@ -174,8 +174,8 @@ Escala a 100 % (`text_styles()`):
 Retícula de 4 px, en `design/style.rs`:
 
 - `item_spacing` 8 × 4; `button_padding` 12 × 4; alto mínimo de control (`interact_size.y`) 24 (objetivo de clic WCAG 2.5.8).
-- `window_margin` 16; `menu_margin` 6. Los paneles laterales usan el margen de marco por defecto de egui.
-- Columna de herramientas: botones de 32×32 con 4 px de separación, dos por fila; ancho fijo = 2 × 32 + 4 + 2 × `window_margin`. Grupos (mover · selección · pintura y retoque · relleno y muestreo) separados por divisores.
+- `window_margin` 16; `menu_margin` 6. Los paneles laterales (herramientas y propiedades) usan `side_panel_frame`, con margen interior de 12 (`PANEL_MARGIN`); la columna de herramientas mide 2 × 32 + 4 + 2 × 12 = 92.
+- Columna de herramientas: botones de 32×32 con 4 px de separación, dos por fila; ancho fijo = 2 × 32 + 4 + 2 × `PANEL_MARGIN`. Grupos (mover · selección · pintura y retoque · relleno y muestreo) separados por divisores.
 - Espacios verticales en diálogos: 4, 6, 8 y 12.
 
 Radios: **4** controles, botones de herramienta y filas; **6** menús, tooltips, popovers y el anillo de foco; **8** ventanas y modales.
