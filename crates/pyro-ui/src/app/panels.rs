@@ -8,6 +8,7 @@ use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
+use crate::design::widgets::{self, FocusRing};
 
 impl PyroApp {
     pub(super) fn menu_bar(&mut self, ctx: &egui::Context) {
@@ -75,12 +76,12 @@ impl PyroApp {
     pub(super) fn status_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("estado").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("{}×{} px", self.doc.width, self.doc.height));
+                ui.monospace(format!("{}×{} px", self.doc.width, self.doc.height));
                 ui.separator();
-                ui.label(format!("{:.0} %", self.zoom * 100.0));
+                ui.monospace(format!("{:.0} %", self.zoom * 100.0));
                 if let Some((x, y)) = self.hover_px.and_then(|p| self.inside(p)) {
                     ui.separator();
-                    ui.label(format!("x {x}, y {y}"));
+                    ui.monospace(format!("x {x}, y {y}"));
                 }
                 ui.separator();
                 if self.history.is_modified() {
@@ -113,7 +114,7 @@ impl PyroApp {
                 for row in group.chunks(2) {
                     ui.horizontal(|ui| {
                         for &tool in row {
-                            self.tool_button(ui, tool, BUTTON, ICON);
+                            self.tool_button(ui, tool);
                         }
                     });
                 }
@@ -132,17 +133,10 @@ Rueda: zoom.",
     }
 
     /// Botón de herramienta solo con icono. El nombre y el atajo van en el
-    /// tooltip y en la etiqueta accesible, para los lectores de pantalla.
-    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, button: f32, icon: f32) {
+    /// tooltip; el nombre accesible es solo el nombre.
+    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
         let selected = self.tool == tool;
-        let visuals = ui.visuals();
-        let tint = if selected { visuals.selection.stroke.color } else { visuals.widgets.inactive.fg_stroke.color };
-        let glyph = icons::text(tool.icon(), icon, tint);
-        let response = ui.add(egui::Button::new(glyph).selected(selected).min_size(egui::vec2(button, button)));
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, tool.label())
-        });
-        if response.on_hover_text(tool.label()).clicked() {
+        if widgets::tool_button(ui, tool.icon(), selected, tool.label(), tool.shortcut()).clicked() {
             self.tool = tool;
         }
     }
@@ -239,28 +233,28 @@ Rueda: zoom.",
         let mut op: Option<fn(&mut Document) -> bool> = None;
         ui.add_enabled_ui(!locked, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Nueva").clicked() {
+                if widgets::button(ui, "Nueva").clicked() {
                     op = Some(|d| {
                         d.add_layer();
                         true
                     });
                 }
-                if ui.button("Duplicar").clicked() {
+                if widgets::button(ui, "Duplicar").clicked() {
                     op = Some(|d| {
                         d.duplicate_layer();
                         true
                     });
                 }
-                if ui.button("Eliminar").clicked() {
+                if widgets::button(ui, "Eliminar").clicked() {
                     op = Some(Document::delete_layer);
                 }
-                if ui.button("Subir").clicked() {
+                if widgets::button(ui, "Subir").clicked() {
                     op = Some(Document::move_layer_up);
                 }
-                if ui.button("Bajar").clicked() {
+                if widgets::button(ui, "Bajar").clicked() {
                     op = Some(Document::move_layer_down);
                 }
-                if ui.button("Combinar abajo").clicked() {
+                if widgets::button(ui, "Combinar abajo").clicked() {
                     op = Some(Document::merge_down);
                 }
             });
@@ -278,10 +272,15 @@ Rueda: zoom.",
         for i in (0..self.doc.layers.len()).rev() {
             ui.horizontal(|ui| {
                 let mut visible = self.doc.layers[i].visible;
-                if ui.checkbox(&mut visible, "").on_hover_text("Visible").changed() {
+                let name = self.doc.layers[i].name.clone();
+                let check = ui.checkbox(&mut visible, "").on_hover_text("Visible").with_focus_ring();
+                check.widget_info(|| {
+                    egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, visible, format!("Visible: {name}"))
+                });
+                if check.changed() {
                     toggle = Some(i);
                 }
-                if ui.selectable_label(i == self.doc.active, &self.doc.layers[i].name).clicked() {
+                if widgets::active_row(ui, i == self.doc.active, &name).clicked() {
                     select = Some(i);
                 }
             });

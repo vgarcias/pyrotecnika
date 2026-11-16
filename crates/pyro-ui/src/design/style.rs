@@ -32,6 +32,7 @@ pub(crate) fn style(p: &Palette) -> egui::Style {
         visuals: if dark { egui::Visuals::dark() } else { egui::Visuals::light() },
         text_styles: text_styles(),
         animation_time: 0.12,
+        drag_value_text_style: egui::TextStyle::Monospace,
         ..Default::default()
     };
 
@@ -150,6 +151,7 @@ mod tests {
         assert_eq!(s.visuals.window_corner_radius, egui::CornerRadius::same(8));
         assert_eq!(s.visuals.menu_corner_radius, egui::CornerRadius::same(6));
         assert_eq!(s.animation_time, 0.12);
+        assert_eq!(s.drag_value_text_style, egui::TextStyle::Monospace);
     }
 
     #[test]

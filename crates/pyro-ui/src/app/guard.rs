@@ -9,6 +9,7 @@ use eframe::egui;
 use pyro_core::document::Document;
 
 use super::{icons, Action, PyroApp};
+use crate::design::widgets;
 
 /// Severidad de un mensaje de la barra de estado.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -240,14 +241,14 @@ impl PyroApp {
             }
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("Exportar primero…").clicked() {
+                if widgets::button(ui, "Exportar primero…").clicked() {
                     choice = Some(Choice::Export);
                 }
-                if ui.button("Descartar cambios").clicked() {
+                if widgets::button(ui, "Descartar cambios").clicked() {
                     choice = Some(Choice::Discard);
                 }
                 // Cancelar recibe el foco: Intro o Espacio nunca descartan.
-                let cancel = ui.button("Cancelar");
+                let cancel = widgets::button(ui, "Cancelar");
                 if focus {
                     cancel.request_focus();
                 }

@@ -9,6 +9,7 @@ use eframe::egui;
 use pyro_platform::updates::{self, Available};
 
 use super::{guard, Pending, PyroApp, Tone};
+use crate::design::widgets;
 
 pub(super) const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -150,31 +151,31 @@ impl PyroApp {
             ui.add_space(12.0);
             ui.horizontal(|ui| match state {
                 UpdateState::Found(available) if available.can_install => {
-                    if ui.button("Descargar e instalar").clicked() {
+                    if widgets::primary_button(ui, "Descargar e instalar").clicked() {
                         click = Some(Click::Install);
                     }
-                    if ui.button("Más tarde").clicked() {
+                    if widgets::button(ui, "Más tarde").clicked() {
                         click = Some(Click::Close);
                     }
                 }
                 UpdateState::Found(_) | UpdateState::Failed(_) => {
-                    if ui.button("Abrir página de descargas").clicked() {
+                    if widgets::button(ui, "Abrir página de descargas").clicked() {
                         click = Some(Click::OpenDownloads);
                     }
-                    if ui.button("Cerrar").clicked() {
+                    if widgets::button(ui, "Cerrar").clicked() {
                         click = Some(Click::Close);
                     }
                 }
                 UpdateState::Installed { .. } => {
-                    if ui.button("Reiniciar ahora").clicked() {
+                    if widgets::primary_button(ui, "Reiniciar ahora").clicked() {
                         click = Some(Click::Restart);
                     }
-                    if ui.button("Más tarde").clicked() {
+                    if widgets::button(ui, "Más tarde").clicked() {
                         click = Some(Click::Close);
                     }
                 }
                 UpdateState::UpToDate => {
-                    if ui.button("Cerrar").clicked() {
+                    if widgets::button(ui, "Cerrar").clicked() {
                         click = Some(Click::Close);
                     }
                 }

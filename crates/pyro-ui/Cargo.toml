@@ -17,3 +17,6 @@ rfd.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+egui_kittest = { version = "0.31", features = ["wgpu", "snapshot", "eframe"] }

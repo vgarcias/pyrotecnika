@@ -7,3 +7,4 @@
 pub(crate) mod fonts;
 pub(crate) mod style;
 pub(crate) mod tokens;
+pub(crate) mod widgets;

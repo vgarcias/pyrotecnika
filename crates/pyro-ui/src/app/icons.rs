@@ -24,6 +24,6 @@ pub(super) const TRIANGLE_ALERT: char = '\u{e193}';
 pub(super) const CIRCLE_X: char = '\u{e088}';
 
 /// Texto con un solo icono, del tamaño y color indicados.
-pub(super) fn text(glyph: char, size: f32, color: Color32) -> RichText {
+pub(crate) fn text(glyph: char, size: f32, color: Color32) -> RichText {
     RichText::new(glyph.to_string()).family(FontFamily::Name(FAMILY.into())).size(size).color(color)
 }

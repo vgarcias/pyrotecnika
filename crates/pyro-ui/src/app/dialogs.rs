@@ -12,6 +12,7 @@ use pyro_formats::export::{self, ExportFormat};
 use pyro_formats::fwpng::FwInfo;
 
 use super::{format_size, guard, Pending, PyroApp, Tone};
+use crate::design::widgets;
 
 pub(super) struct FilterDialog {
     pub(super) filter: Filter,
@@ -198,8 +199,8 @@ impl PyroApp {
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                apply = ui.button("Aplicar").clicked();
-                cancel = ui.button("Cancelar").clicked();
+                apply = widgets::primary_button(ui, "Aplicar").clicked();
+                cancel = widgets::button(ui, "Cancelar").clicked();
             });
         });
         if changed {
@@ -308,11 +309,11 @@ impl PyroApp {
             } else if let Some(e) = &dlg.error {
                 guard::notice(ui, Tone::Error, &format!("No se pudo codificar la imagen: {e}."));
             } else if let Some(bytes) = &dlg.bytes {
-                ui.label(format!(
-                    "Tamaño: {}  ({:.1} % del original sin comprimir)",
-                    format_size(bytes.len()),
-                    bytes.len() as f64 / raw as f64 * 100.0
-                ));
+                ui.horizontal(|ui| {
+                    ui.label("Tamaño:");
+                    ui.monospace(format_size(bytes.len()));
+                    ui.label(format!("({:.1} % del original sin comprimir)", bytes.len() as f64 / raw as f64 * 100.0));
+                });
             }
             if let Some(tex) = &dlg.preview {
                 ui.label("Vista previa al 100 % (desplázate para revisar la calidad):");
@@ -328,7 +329,7 @@ impl PyroApp {
             if let Some(hint) = &after_hint {
                 ui.label(hint);
             }
-            if ui.add_enabled(ready, egui::Button::new("Guardar…")).clicked() {
+            if ui.add_enabled_ui(ready, |ui| widgets::primary_button(ui, "Guardar…")).inner.clicked() {
                 save = true;
             }
         });
@@ -356,7 +357,7 @@ impl PyroApp {
                 ui.end_row();
             });
             ui.checkbox(&mut dlg.transparent, "Fondo transparente");
-            create = ui.button("Crear").clicked();
+            create = widgets::primary_button(ui, "Crear").clicked();
         });
         if create {
             let pending = Pending::New { width: dlg.width, height: dlg.height, transparent: dlg.transparent };
