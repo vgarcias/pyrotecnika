@@ -8,6 +8,8 @@ mod guard;
 pub(crate) mod icons;
 mod input;
 mod panels;
+#[cfg(test)]
+mod scenes;
 mod tools;
 mod updates;
 mod view;

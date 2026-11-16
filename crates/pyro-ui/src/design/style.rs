@@ -47,6 +47,9 @@ pub(crate) fn style(p: &Palette) -> egui::Style {
     let w = p.stroke_width;
     let radius = CornerRadius::same(4);
     v.dark_mode = dark;
+    // Rellenar la parte recorrida del riel: el riel vacío tiene el color de
+    // los controles y no se ve sobre el fondo de las ventanas.
+    v.slider_trailing_fill = true;
     v.panel_fill = p.bg_panel;
     v.window_fill = p.bg_raised;
     v.window_stroke = Stroke::new(w, p.border_subtle);
@@ -179,6 +182,7 @@ mod tests {
         assert_eq!(s.visuals.menu_corner_radius, egui::CornerRadius::same(6));
         assert_eq!(s.animation_time, 0.12);
         assert_eq!(s.drag_value_text_style, egui::TextStyle::Monospace);
+        assert!(s.visuals.slider_trailing_fill, "el riel vacío no se ve sobre las ventanas");
     }
 
     #[test]

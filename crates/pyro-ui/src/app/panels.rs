@@ -8,6 +8,7 @@ use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
+use crate::design::fonts::title_style;
 use crate::design::style::ThemeChoice;
 use crate::design::widgets::{self, FocusRing};
 
@@ -201,7 +202,7 @@ Rueda: zoom.",
     }
 
     pub(super) fn tool_options(&mut self, ui: &mut egui::Ui) {
-        ui.strong(self.tool.label());
+        ui.label(egui::RichText::new(self.tool.label()).text_style(title_style()));
         if self.tool.edits_pixels() {
             if let Some(reason) = self.layer_block() {
                 guard::notice(ui, Tone::Warn, &reason);
@@ -254,7 +255,7 @@ Rueda: zoom.",
     }
 
     pub(super) fn layers_ui(&mut self, ui: &mut egui::Ui) {
-        ui.strong("Capas");
+        ui.label(egui::RichText::new("Capas").text_style(title_style()));
         let locked = self.filter_dialog.is_some();
         let mut op: Option<fn(&mut Document) -> bool> = None;
         ui.add_enabled_ui(!locked, |ui| {

@@ -17,6 +17,7 @@ impl PyroApp {
     pub(super) fn canvas_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Lienzo"));
         if self.fit_pending && rect.width() > 50.0 {
             self.fit(rect);
         }
