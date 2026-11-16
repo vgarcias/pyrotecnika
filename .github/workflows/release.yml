@@ -5,9 +5,9 @@ name: Release
 # como prerelease. Con "Run workflow" se compilan sin publicar (para probar).
 #
 # Instaladores (docs/ARQUITECTURA.md §8.2), por ahora sin firma de código:
-#   Windows  NSIS .exe (por usuario, sin admin)
-#   macOS    .dmg con un .app universal (Apple Silicon + Intel)
-#   Linux    .AppImage y .deb (x86_64)
+#   Windows  NSIS .exe (por usuario, sin admin) y .msi (por máquina, para IT)
+#   macOS    .dmg y .pkg con un .app universal (Apple Silicon + Intel)
+#   Linux    .AppImage, .deb y .rpm (x86_64)
 
 on:
   push:
@@ -20,6 +20,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_PACKAGER_VERSION: 0.11.8
+  CARGO_GENERATE_RPM_VERSION: 0.21.1
 
 jobs:
   build:
@@ -30,10 +31,10 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            formats: nsis
+            formats: nsis,wix
           - name: macOS
             os: macos-latest
-            formats: dmg
+            formats: app,dmg
           - name: Linux
             os: ubuntu-22.04
             formats: appimage,deb
@@ -65,6 +66,10 @@ jobs:
       - name: Instalar cargo-packager
         run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
+      - name: Instalar cargo-generate-rpm (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install cargo-generate-rpm --locked --version ${{ env.CARGO_GENERATE_RPM_VERSION }}
+
       - name: Compilar (Windows y Linux)
         if: runner.os != 'macOS'
         run: cargo build --release -p pyrotecnika
@@ -81,14 +86,33 @@ jobs:
           lipo -info target/release/pyrotecnika
 
       - name: Empaquetar
-        run: cargo packager --release -p pyrotecnika --formats ${{ matrix.formats }} --out-dir "${{ github.workspace }}/target/packages"
+        shell: bash
+        run: |
+          formats="${{ matrix.formats }}"
+          # WiX (MSI) solo admite versiones numéricas: las betas salen sin MSI.
+          case "$GITHUB_REF_NAME" in *-*) formats="${formats/,wix/}" ;; esac
+          cargo packager --release -p pyrotecnika --formats "$formats" --out-dir "$GITHUB_WORKSPACE/target/packages"
+
+      - name: PKG para despliegue con MDM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          productbuild --component target/packages/Pyrotecnika.app /Applications \
+            "target/packages/Pyrotecnika_${version}_universal.pkg"
+
+      - name: RPM (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo generate-rpm -p app/pyrotecnika
+          cp target/generate-rpm/*.rpm target/packages/
 
       - name: Reunir instaladores
         shell: bash
         run: |
           mkdir -p dist
           find target/packages -maxdepth 1 -type f \
-            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) \
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.pkg' \
+               -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
             -exec cp {} dist/ \;
           # El binario de macOS es universal aunque cargo-packager nombre el DMG por el runner (aarch64).
           for f in dist/*_aarch64.dmg; do if [ -e "$f" ]; then mv "$f" "${f%_aarch64.dmg}_universal.dmg"; fi; done
@@ -127,11 +151,13 @@ jobs:
           cat > notes.md <<'EOF'
           ## Descargas
 
-          | Sistema | Archivo |
-          |---|---|
-          | Windows 10/11 (x64) | `pyrotecnika_*_x64-setup.exe` |
-          | macOS 11+ (Apple Silicon e Intel) | `Pyrotecnika_*_universal.dmg` |
-          | Linux x86_64 | `.AppImage` (cualquier distribución) o `.deb` (Debian/Ubuntu) |
+          | Sistema | Uso personal | Despliegue (IT/MDM) |
+          |---|---|---|
+          | Windows 10/11 (x64) | `*_x64-setup.exe` (sin admin) | `*.msi` (por máquina) |
+          | macOS 11+ (Apple Silicon e Intel) | `*_universal.dmg` | `*_universal.pkg` |
+          | Linux x86_64 | `.AppImage` (cualquier distribución) | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) |
+
+          Guía completa de instalación y desinstalación: [docs/INSTALACION.md](https://github.com/vgarcias/pyrotecnika/blob/main/docs/INSTALACION.md)
 
           Los instaladores aún no están firmados:
           - **Windows:** si aparece SmartScreen, pulsa *Más información → Ejecutar de todas formas*.

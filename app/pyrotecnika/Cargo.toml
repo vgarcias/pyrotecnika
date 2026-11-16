@@ -55,3 +55,32 @@ info-plist-path = "../../packaging/macos/Info.plist"
 [package.metadata.packager.deb]
 depends = ["libgtk-3-0", "libxkbcommon-x11-0", "libvulkan1 | libegl1"]
 section = "graphics"
+desktop-template = "../../packaging/linux/pyrotecnika.desktop"
+files = { "../../packaging/linux/io.pyrotecnika.app.metainfo.xml" = "/usr/share/metainfo/io.pyrotecnika.app.metainfo.xml" }
+
+[package.metadata.packager.appimage]
+files = { "../../packaging/linux/io.pyrotecnika.app.metainfo.xml" = "/usr/share/metainfo/io.pyrotecnika.app.metainfo.xml" }
+
+# RPM con cargo-generate-rpm (cargo-packager no lo genera). Se ejecuta desde la
+# raíz del workspace: `cargo generate-rpm -p app/pyrotecnika`.
+[package.metadata.generate-rpm]
+summary = "Editor de imágenes de escritorio"
+url = "https://github.com/vgarcias/pyrotecnika"
+assets = [
+  { source = "target/release/pyrotecnika", dest = "/usr/bin/pyrotecnika", mode = "755" },
+  { source = "packaging/linux/pyrotecnika.desktop", dest = "/usr/share/applications/pyrotecnika.desktop", mode = "644" },
+  { source = "packaging/linux/io.pyrotecnika.app.metainfo.xml", dest = "/usr/share/metainfo/io.pyrotecnika.app.metainfo.xml", mode = "644" },
+  { source = "packaging/icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/pyrotecnika.png", mode = "644" },
+  { source = "packaging/icons/64x64.png", dest = "/usr/share/icons/hicolor/64x64/apps/pyrotecnika.png", mode = "644" },
+  { source = "packaging/icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/pyrotecnika.png", mode = "644" },
+  { source = "packaging/icons/256x256.png", dest = "/usr/share/icons/hicolor/256x256/apps/pyrotecnika.png", mode = "644" },
+  { source = "packaging/icons/512x512.png", dest = "/usr/share/icons/hicolor/512x512/apps/pyrotecnika.png", mode = "644" },
+  { source = "LICENSE-MIT", dest = "/usr/share/licenses/pyrotecnika/LICENSE-MIT", mode = "644", doc = true },
+  { source = "LICENSE-APACHE", dest = "/usr/share/licenses/pyrotecnika/LICENSE-APACHE", mode = "644", doc = true },
+]
+
+# Las bibliotecas enlazadas (GTK, etc.) se detectan solas; estas se cargan en
+# tiempo de ejecución con dlopen y hay que declararlas.
+[package.metadata.generate-rpm.requires]
+libxkbcommon-x11 = "*"
+"(vulkan-loader or mesa-libEGL)" = ""

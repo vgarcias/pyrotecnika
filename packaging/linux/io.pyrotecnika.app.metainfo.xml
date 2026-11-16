@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream: ficha de la app en GNOME Software, KDE Discover, etc. -->
+<component type="desktop-application">
+  <id>io.pyrotecnika.app</id>
+  <name>Pyrotecnika</name>
+  <summary>Editor de imágenes de escritorio</summary>
+  <summary xml:lang="en">Desktop image editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <description>
+    <p>
+      Pyrotecnika es un editor de imágenes de mapa de bits: capas y selección,
+      pintura y retoque, ajustes y filtros, exportación optimizada y apertura
+      de archivos PNG de Fireworks.
+    </p>
+  </description>
+  <launchable type="desktop-id">pyrotecnika.desktop</launchable>
+  <url type="homepage">https://github.com/vgarcias/pyrotecnika</url>
+  <url type="bugtracker">https://github.com/vgarcias/pyrotecnika/issues</url>
+  <provides>
+    <binary>pyrotecnika</binary>
+  </provides>
+  <categories>
+    <category>Graphics</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-16"/>
+  </releases>
+</component>

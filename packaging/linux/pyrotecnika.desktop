@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Pyrotecnika
+GenericName=Editor de imágenes
+GenericName[en]=Image Editor
+Comment=Edita imágenes: capas, pintura, ajustes y exportación optimizada
+Comment[en]=Edit images: layers, painting, adjustments and optimized export
+Exec=pyrotecnika %F
+Icon=pyrotecnika
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+Keywords=imagen;foto;pintar;capas;png;image;photo;paint;layers;
+MimeType=image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
+StartupWMClass=pyrotecnika
