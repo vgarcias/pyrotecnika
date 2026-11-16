@@ -13,3 +13,6 @@
 *.icns binary
 *.ttf binary
 *.otf binary
+
+# Firmados: sus bytes no pueden cambiar.
+crates/pyro-platform/tests/fixtures/** binary

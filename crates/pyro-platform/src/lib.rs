@@ -5,6 +5,7 @@
 //! pública, que es la misma en Windows, macOS y Linux.
 
 pub mod open_files;
+pub mod updates;
 
 #[cfg(target_os = "macos")]
 mod os {

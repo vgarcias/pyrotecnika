@@ -36,7 +36,7 @@ Pensado para administradores: instala en `Program Files` para todos los usuarios
 y se puede desplegar por GPO, Intune o SCCM.
 
 ```powershell
-msiexec /i pyrotecnika_X.Y.Z_x64_es-ES.msi /qn
+msiexec /i pyrotecnika_X.Y.Z_x64_en-US.msi /qn
 ```
 
 Pyrotecnika **no** se registra como programa predeterminado para PNG o JPG. Para
@@ -112,16 +112,28 @@ sha256sum --ignore-missing -c SHA256SUMS.txt
 
 ## Actualizar
 
-Por ahora Pyrotecnika no se actualiza sola: descarga la nueva versión e
-instálala encima de la anterior. Con `.deb`/`.rpm` usa el mismo comando de
-instalación, y con AppImage sustituye el archivo.
+Pyrotecnika nunca se conecta a internet por su cuenta. Para buscar una versión
+nueva usa **Ayuda › Buscar actualizaciones…**: consulta el último release
+estable en GitHub (GitHub ve tu dirección IP, como en cualquier descarga).
+
+| Instalado con | Qué hace |
+|---|---|
+| `.exe` (Windows), `.dmg` (macOS), AppImage | Descarga la versión nueva, **comprueba su firma** y la instala; después pide reiniciar. En Windows la app se cierra y el instalador la vuelve a abrir. |
+| `.msi`, `.pkg`, `.deb`, `.rpm` | Solo avisa y enlaza a las descargas: instala la versión nueva con el mismo método (o lo hará tu departamento de IT). |
+
+Si tienes cambios sin exportar, primero te pregunta si quieres exportarlos.
+
+Cada paquete se firma con una llave minisign y la app solo instala lo que esté
+firmado con ella; la clave pública está en
+[`packaging/updater-pubkey.txt`](../packaging/updater-pubkey.txt). Si la firma
+no coincide, no se instala nada.
 
 ## Desinstalar
 
 | Formato | Cómo |
 |---|---|
 | Windows `.exe` | *Configuración → Aplicaciones → Aplicaciones instaladas → Pyrotecnika → Desinstalar*, o `%LOCALAPPDATA%\Pyrotecnika\uninstall.exe` (`/S` para hacerlo en silencio) |
-| Windows `.msi` | *Aplicaciones instaladas*, o `msiexec /x pyrotecnika_X.Y.Z_x64_es-ES.msi /qn` |
+| Windows `.msi` | *Aplicaciones instaladas*, o `msiexec /x pyrotecnika_X.Y.Z_x64_en-US.msi /qn` |
 | macOS | Arrastra `Pyrotecnika.app` desde *Aplicaciones* a la Papelera |
 | `.deb` | `sudo apt remove pyrotecnika` |
 | `.rpm` | `sudo dnf remove pyrotecnika` (o `sudo zypper remove pyrotecnika`) |

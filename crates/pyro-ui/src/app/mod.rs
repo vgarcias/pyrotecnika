@@ -9,6 +9,7 @@ mod icons;
 mod input;
 mod panels;
 mod tools;
+mod updates;
 mod view;
 
 use std::path::PathBuf;
@@ -26,6 +27,7 @@ use pyro_formats::io;
 use dialogs::{ExportDialog, FilterDialog, NewDialog};
 use guard::{Pending, Status, Tone};
 use tools::{Drag, Tool};
+use updates::UpdateState;
 
 #[derive(Clone, Copy)]
 pub(super) enum Action {
@@ -45,6 +47,7 @@ pub(super) enum Action {
     ZoomOut,
     Fit,
     ActualSize,
+    CheckUpdates,
 }
 
 pub struct PyroApp {
@@ -87,6 +90,8 @@ pub struct PyroApp {
     /// El usuario ya aceptó cerrar: no se vuelve a preguntar.
     closing: bool,
     title: String,
+    /// Búsqueda o instalación de actualizaciones en curso (ventana abierta).
+    update: Option<UpdateState>,
 }
 
 impl PyroApp {
@@ -129,6 +134,7 @@ impl PyroApp {
             after_export: None,
             closing: false,
             title: String::new(),
+            update: None,
         }
     }
 
@@ -286,6 +292,7 @@ impl PyroApp {
                 self.zoom = 1.0;
                 self.pan = Vec2::ZERO;
             }
+            Action::CheckUpdates => self.check_updates(),
         }
     }
 
@@ -319,6 +326,7 @@ impl eframe::App for PyroApp {
         self.filter_window(ctx);
         self.export_window(ctx);
         self.new_window(ctx);
+        self.update_window(ctx);
         self.confirm_window(ctx);
         self.sync_title(ctx);
         if self.canvas_dirty || self.sel_dirty {

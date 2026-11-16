@@ -26,8 +26,16 @@ pub(super) struct Status {
 /// Acción que sustituye o cierra el documento y espera confirmación.
 pub(super) enum Pending {
     Open(PathBuf),
-    New { width: u32, height: u32, transparent: bool },
+    New {
+        width: u32,
+        height: u32,
+        transparent: bool,
+    },
     Quit,
+    /// Instalar la actualización encontrada (en Windows cierra la app).
+    InstallUpdate,
+    /// Abrir la versión recién instalada y cerrar esta.
+    Restart,
 }
 
 enum Choice {
@@ -148,6 +156,8 @@ impl PyroApp {
                 self.closing = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+            Pending::InstallUpdate => self.install_update(),
+            Pending::Restart => self.restart_after_update(ctx),
         }
     }
 
@@ -178,6 +188,8 @@ impl PyroApp {
             Pending::Open(path) => format!("Después de guardar se abrirá «{}».", short_name(path)),
             Pending::New { .. } => "Después de guardar se creará el documento nuevo.".into(),
             Pending::Quit => "Después de guardar se cerrará Pyrotecnika.".into(),
+            Pending::InstallUpdate => "Después de guardar se instalará la actualización.".into(),
+            Pending::Restart => "Después de guardar se reiniciará Pyrotecnika.".into(),
         })
     }
 
@@ -196,6 +208,13 @@ impl PyroApp {
             ),
             Pending::Quit => {
                 ("¿Salir y descartar los cambios?".to_string(), "Si sales ahora, esos cambios se pierden.")
+            }
+            Pending::InstallUpdate => (
+                "¿Actualizar y descartar los cambios?".to_string(),
+                "Para actualizar, Pyrotecnika se cierra y esos cambios se pierden.",
+            ),
+            Pending::Restart => {
+                ("¿Reiniciar y descartar los cambios?".to_string(), "Si reinicias ahora, esos cambios se pierden.")
             }
         };
         let layers = self.doc.layers.len();

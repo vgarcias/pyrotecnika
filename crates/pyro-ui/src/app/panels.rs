@@ -7,7 +7,7 @@ use pyro_core::filters::Filter;
 use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
-use super::{format_size, guard, icons, Action, PyroApp, Tone};
+use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
 
 impl PyroApp {
     pub(super) fn menu_bar(&mut self, ctx: &egui::Context) {
@@ -59,6 +59,11 @@ impl PyroApp {
                     item(ui, "Alejar", "Ctrl+-", Action::ZoomOut, true);
                     item(ui, "Ajustar a la ventana", "Ctrl+0", Action::Fit, true);
                     item(ui, "Tamaño real", "Ctrl+1", Action::ActualSize, true);
+                });
+                ui.menu_button("Ayuda", |ui| {
+                    item(ui, "Buscar actualizaciones…", "", Action::CheckUpdates, true);
+                    ui.separator();
+                    ui.weak(format!("Pyrotecnika {}", updates::VERSION));
                 });
             });
         });

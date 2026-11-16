@@ -87,7 +87,16 @@ jobs:
 
       - name: Empaquetar
         shell: bash
+        env:
+          # Firma minisign de las actualizaciones (RNF-S3). Cada paquete recibe
+          # un .sig y el .app se empaqueta también como .app.tar.gz.
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
         run: |
+          if [ -z "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" ]; then
+            echo "::warning::Sin llave de firma: el release no incluirá actualizaciones automáticas"
+            unset CARGO_PACKAGER_SIGN_PRIVATE_KEY CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD
+          fi
           formats="${{ matrix.formats }}"
           # WiX (MSI) solo admite versiones numéricas: las betas salen sin MSI.
           case "$GITHUB_REF_NAME" in *-*) formats="${formats/,wix/}" ;; esac
@@ -112,10 +121,18 @@ jobs:
           mkdir -p dist
           find target/packages -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.pkg' \
-               -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+               -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name '*.app.tar.gz' -o -name '*.sig' \) \
             -exec cp {} dist/ \;
-          # El binario de macOS es universal aunque cargo-packager nombre el DMG por el runner (aarch64).
-          for f in dist/*_aarch64.dmg; do if [ -e "$f" ]; then mv "$f" "${f%_aarch64.dmg}_universal.dmg"; fi; done
+          # El binario de macOS es universal aunque cargo-packager nombre el DMG
+          # por el runner (aarch64), y el .app.tar.gz no lleva versión.
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          for f in dist/*_aarch64.dmg*; do
+            if [ -e "$f" ]; then mv "$f" "${f/_aarch64.dmg/_universal.dmg}"; fi
+          done
+          for f in dist/Pyrotecnika.app.tar.gz*; do
+            if [ -e "$f" ]; then mv "$f" "${f/Pyrotecnika.app.tar.gz/Pyrotecnika_${version}_universal.app.tar.gz}"; fi
+          done
           ls -la dist
           [ -n "$(ls dist)" ] || { echo "::error::No se generó ningún instalador"; exit 1; }
 
@@ -133,10 +150,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Manifiesto de actualizaciones (latest.json)
+        run: |
+          if ls dist/*.sig >/dev/null 2>&1; then
+            python3 packaging/updater/make_latest_json.py dist "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > dist/latest.json
+            cat dist/latest.json
+          else
+            echo "::warning::Paquetes sin firmar: no se publica latest.json"
+          fi
+          # Las firmas ya van dentro de latest.json.
+          rm -f dist/*.sig
 
       - name: Sumas SHA-256
         working-directory: dist
@@ -164,7 +194,7 @@ jobs:
           - **macOS:** la primera vez, clic derecho sobre la app → *Abrir*, o en *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*.
           - **Linux (AppImage):** `chmod +x pyrotecnika_*.AppImage` y ejecútalo.
 
-          Comprueba las descargas con `SHA256SUMS.txt`.
+          Comprueba las descargas con `SHA256SUMS.txt`. Desde la 0.2, *Ayuda › Buscar actualizaciones…* instala las versiones nuevas (`latest.json` y `*.app.tar.gz` son para eso).
           EOF
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \

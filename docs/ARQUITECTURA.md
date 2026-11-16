@@ -425,8 +425,10 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 
 ### 8.3 Actualizaciones
 
-- Feed JSON estático en HTTPS (GitHub Releases o un CDN) con versión, notas, URL y **firma minisign** por plataforma.
-- `cargo-packager-updater` descarga, **verifica la firma con la clave pública incluida en el binario** y aplica:
+- Feed JSON estático en HTTPS: `latest.json` en los assets del último release estable de GitHub, con versión, notas, URL y **firma minisign** por plataforma (lo genera `packaging/updater/make_latest_json.py` en `release.yml`).
+- Solo se busca cuando el usuario lo pide (*Ayuda › Buscar actualizaciones…*); la app nunca se conecta por su cuenta.
+- `pyro-platform/src/updates.rs` descarga (ureq + rustls con los certificados del SO), **verifica la firma con la clave pública incluida en el binario** (`packaging/updater-pubkey.txt`, `minisign-verify`) y aplica. Usa el formato de `cargo-packager-updater`, pero no ese crate: depende de `option-ext` (MPL-2.0), que la política de licencias excluye.
+- La llave privada y su contraseña son los secretos `CARGO_PACKAGER_SIGN_PRIVATE_KEY(_PASSWORD)` del repositorio; hay una copia en el gestor de contraseñas del mantenedor. Si se perdiera, las copias instaladas no podrían actualizarse solas.
 
 | Formato instalado | Comportamiento |
 |---|---|
@@ -456,13 +458,13 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 
 | Fase | Contenido | Criterio de salida |
 |---|---|---|
-| **0. Cimientos** ✔ (local) | Workspace en crates; `app.rs` partido en módulos; backend wgpu; CI en los 3 SO; licencias; `cargo-deny`; prueba de concepto de abrir archivos en macOS | Verificado en Windows. macOS y Linux se verifican en el primer push a GitHub (jobs `test` y `macos-open-files`) |
+| **0. Cimientos** ✔ | Workspace en crates; `app.rs` partido en módulos; backend wgpu; CI en los 3 SO; licencias; `cargo-deny`; prueba de concepto de abrir archivos en macOS | Verificado en los tres SO en el CI de GitHub (jobs `test` y `macos-open-files`) |
 | **1. Sistema de diseño** | Tokens, temas claro/oscuro/alto contraste, Inter, iconos, estados, escala de UI | Snapshots de referencia aprobados |
 | **2. Comandos y preferencias** | Registro de comandos, atajos configurables, paleta, settings TOML, recientes en SQLite | RF-13 a RF-16 |
 | **3. No bloqueo y memoria** | Jobs con progreso y cancelación, historial por teselas, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos |
 | **4. Formato nativo y recuperación** | `.ora`, autoguardado, panic hook, pestañas | RF-08 a RF-10, RF-20 |
 | **5. Integración de escritorio** | Portapapeles de imagen, arrastrar y soltar completo, notificaciones, menú macOS, asociación de archivos, instancia única | RF-11, 12, 17, 19 |
-| **6. Distribución** | Paquetes de los 6 formatos, firma, notarización, feed y updater | Instalar → actualizar → desinstalar en VMs limpias |
+| **6. Distribución** ◐ | Paquetes de los 6 formatos ✔ (más NSIS), feed y updater ✔, firma de código y notarización (pendientes, decisión 9.2-1) | Instalar → actualizar → desinstalar en VMs limpias |
 | **7. Accesibilidad y pulido** | Auditoría WCAG 2.2 con lectores de pantalla reales, i18n en/es | Lista de comprobación de §7 al 100 % |
 
 ### 9.2 Decisiones tomadas (2026-11-11)

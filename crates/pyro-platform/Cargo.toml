@@ -7,7 +7,20 @@ license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+# Actualizaciones (src/updates.rs). TLS con rustls + ring y los certificados del
+# sistema (rustls-platform-verifier): sin OpenSSL ni webpki-roots.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+minisign-verify = "0.2"
+base64 = "0.22"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [target.'cfg(target_os = "macos")'.dependencies]
+tar = { version = "0.4", default-features = false }
+flate2 = "1"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = [
