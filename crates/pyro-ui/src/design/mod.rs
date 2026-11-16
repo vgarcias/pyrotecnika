@@ -5,4 +5,5 @@
 //! negro) y lo activo se marca por inversión.
 
 pub(crate) mod fonts;
+pub(crate) mod style;
 pub(crate) mod tokens;
