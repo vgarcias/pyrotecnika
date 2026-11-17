@@ -32,7 +32,7 @@ impl Chord {
     }
 
     /// Texto para `keymap.toml`, en orden fijo: `Ctrl+Alt+Shift+Tecla`.
-    pub(crate) fn to_config(&self) -> String {
+    pub(crate) fn to_config(self) -> String {
         let mut out = String::new();
         for (on, name) in [(self.ctrl, "Ctrl+"), (self.alt, "Alt+"), (self.shift, "Shift+")] {
             if on {
@@ -44,7 +44,7 @@ impl Chord {
     }
 
     /// Texto para la interfaz: `Ctrl+Mayús+R` o, en macOS, `⌘⇧R`.
-    pub(crate) fn label(&self, mac: bool) -> String {
+    pub(crate) fn label(self, mac: bool) -> String {
         let key = key_label(self.key);
         if mac {
             let mut out = String::new();
@@ -65,27 +65,27 @@ impl Chord {
         }
     }
 
-    pub(crate) fn modifiers(&self) -> Modifiers {
+    pub(crate) fn modifiers(self) -> Modifiers {
         let mut m = Modifiers::NONE;
         if self.ctrl {
-            m = m | Modifiers::COMMAND;
+            m |= Modifiers::COMMAND;
         }
         if self.alt {
-            m = m | Modifiers::ALT;
+            m |= Modifiers::ALT;
         }
         if self.shift {
-            m = m | Modifiers::SHIFT;
+            m |= Modifiers::SHIFT;
         }
         m
     }
 
     /// Tiene algún modificador; Mayús cuenta.
-    pub(crate) fn has_modifier(&self) -> bool {
+    pub(crate) fn has_modifier(self) -> bool {
         self.ctrl || self.alt || self.shift
     }
 
     /// La tecla se pulsó en este cuadro con exactamente estos modificadores.
-    pub(crate) fn pressed(&self, i: &InputState) -> bool {
+    pub(crate) fn pressed(self, i: &InputState) -> bool {
         i.key_pressed(self.key) && i.modifiers.matches_exact(self.modifiers())
     }
 }
