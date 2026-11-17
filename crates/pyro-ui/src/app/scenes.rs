@@ -178,4 +178,25 @@ mod tests {
         let canvas = h.get_by_label("Lienzo");
         assert!(canvas.raw_bounds().expect("el lienzo tiene área").width() > 0.0);
     }
+
+    /// Al 200 % en la ventana mínima la columna de herramientas no cabe: debe
+    /// poder desplazarse hasta la última herramienta y la ayuda, por encima
+    /// de la barra de estado.
+    #[test]
+    fn herramientas_alcanzables_al_200_por_ciento() {
+        let mut h = scene(Scene::Main, ThemeChoice::Dark, 2.0, egui::vec2(900.0, 560.0));
+        h.run_steps(4);
+        h.input_mut().events.push(egui::Event::PointerMoved(egui::pos2(20.0, 120.0)));
+        h.input_mut().events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -2000.0),
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(30);
+        let status_top = h.get_by_label("800×533 px").raw_bounds().expect("barra de estado").y0;
+        for name in ["Cuentagotas", "Ayuda de navegación"] {
+            let b = h.get_by_label(name).raw_bounds().expect("tiene área");
+            assert!(b.y1 <= status_top, "{name} queda bajo la barra de estado: {b:?} vs {status_top}");
+        }
+    }
 }

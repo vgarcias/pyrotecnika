@@ -364,6 +364,7 @@ impl eframe::App for PyroApp {
         self.update_window(ctx);
         self.confirm_window(ctx);
         self.sync_title(ctx);
+        crate::design::widgets::paint_focus_ring(ctx);
         if self.canvas_dirty || self.sel_dirty {
             ctx.request_repaint();
         }

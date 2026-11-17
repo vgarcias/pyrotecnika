@@ -126,7 +126,7 @@ Todos los tokens son grises puros (r = g = b); lo comprueba la prueba `la_interf
 | `border_control` | `#7A7A7A` | `#858585` | `#FFFFFF` | Bordes de controles |
 | `text_primary` | `#EDEDED` | `#181818` | `#FFFFFF` | Texto e iconos; también avisos y errores |
 | `text_secondary` | `#A6A6A6` | `#575757` | `#FFFFFF` | Etiquetas, ayudas, iconos de herramienta en reposo (= texto «débil» de egui) |
-| `text_disabled` | `#6B6B6B` | `#9A9A9A` | `#8C8C8C` | Deshabilitado (exento de WCAG 1.4.3) |
+| `text_disabled` | `#6B6B6B` | `#9A9A9A` | `#8C8C8C` | Reservado para deshabilitado (hoy egui atenúa por su cuenta; exento de WCAG 1.4.3) |
 | `active` | `#EDEDED` | `#181818` | `#FFFFFF` | Relleno de lo activo (inversión) |
 | `on_active` | `#121212` | `#FFFFFF` | `#000000` | Texto e icono sobre `active` |
 | `focus_ring` | `#FFFFFF` | `#000000` | `#FFFFFF` | Anillo de foco de teclado |
@@ -203,7 +203,8 @@ Widgets propios (`design/widgets.rs`):
 - **`primary_button`**: invertido. Uno por diálogo, para la acción que lo cierra con éxito: Aplicar, Guardar…, Crear, Descargar e instalar, Reiniciar ahora. La confirmación de descartar cambios **no** lleva botón principal: sus tres opciones son normales y el foco inicial va a Cancelar, para que Intro o Espacio nunca descarten.
 - **`tool_button`**: 32×32, icono Lucide de 18 px. Reposo: sin relleno, icono `text_secondary`. Hover o foco: `bg_hover`, icono `text_primary`. Activo: invertido. Tooltip «Nombre · atajo»; nombre accesible solo «Nombre», con estado de selección para AccessKit.
 - **`active_row`**: fila de ancho completo, 24 de alto, texto con sangría de 8; invertida si es la capa activa, `bg_hover` al pasar el puntero. Recorta con «…» y entonces muestra el nombre completo en el tooltip.
-- **`FocusRing::with_focus_ring`**: se aplica a todo widget interactivo propio y a las casillas del panel de capas.
+- **Anillo de foco** (`paint_focus_ring`): una pasada al final de cada cuadro pinta 2 px en `focus_ring`, 3 px fuera del widget con foco (propio o de egui), en la capa de ese widget y recortado a su zona visible. Los campos de texto con foco llevan además borde en `focus_ring` (`selection.stroke`).
+- **Selección de egui**: relleno `active` al 25 % y texto en `focus_ring`; texto encima ≥ 4.5:1 en los tres temas (prueba `la_seleccion_se_lee_y_el_campo_con_foco_tiene_borde`).
 - **Avisos** (`app/guard.rs`): icono de severidad del tamaño del texto `Body` más texto semibold, en la barra de estado o en el diálogo; una línea recortada con el texto completo en tooltip.
 
 Iconografía: Lucide como fuente tipográfica (no SVG), coloreada con los tokens de texto; todo icono tiene tooltip y nombre accesible.
@@ -220,7 +221,7 @@ Iconografía: Lucide como fuente tipográfica (no SVG), coloreada con los tokens
 - Marcar lo activo por inversión; un único `primary_button` por diálogo.
 - Poner los números en `Monospace`.
 - Dibujar todo lo que va sobre la imagen en par blanco + negro (`overlay_stroke`), nunca con un token de tema.
-- Pasar todo widget interactivo propio por `with_focus_ring` y darle nombre accesible.
+- Dar nombre accesible a todo widget interactivo propio; el anillo de foco lo pone `paint_focus_ring` sin hacer nada más.
 - Comprobar cualquier cambio visual con las capturas de referencia en los tres temas (`UPDATE_SNAPSHOTS=1 cargo test -p pyro-ui -- --ignored` las regenera; las escenas están en `crates/pyro-ui/src/app/scenes.rs`).
 
 **No hacer**

@@ -10,7 +10,7 @@ use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
 use crate::design::fonts::title_style;
 use crate::design::style::{self, ThemeChoice};
-use crate::design::widgets::{self, FocusRing};
+use crate::design::widgets;
 
 impl PyroApp {
     pub(super) fn menu_bar(&mut self, ctx: &egui::Context) {
@@ -133,29 +133,34 @@ impl PyroApp {
         let width = 2.0 * BUTTON + GAP + 2.0 * f32::from(style::PANEL_MARGIN);
         let frame = style::side_panel_frame(&ctx.style());
         egui::SidePanel::left("herramientas").resizable(false).exact_width(width).frame(frame).show(ctx, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
-            ui.add_space(GAP);
-            for (i, group) in GROUPS.iter().enumerate() {
-                if i > 0 {
-                    ui.separator();
+            // Al 200 % en la ventana mínima la columna no cabe: se desplaza.
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
+                ui.add_space(GAP);
+                for (i, group) in GROUPS.iter().enumerate() {
+                    if i > 0 {
+                        ui.separator();
+                    }
+                    for row in group.chunks(2) {
+                        ui.horizontal(|ui| {
+                            for &tool in row {
+                                self.tool_button(ui, tool);
+                            }
+                        });
+                    }
                 }
-                for row in group.chunks(2) {
-                    ui.horizontal(|ui| {
-                        for &tool in row {
-                            self.tool_button(ui, tool);
-                        }
-                    });
-                }
-            }
-            ui.separator();
-            let help = icons::text(icons::CIRCLE_HELP, ICON, ui.visuals().weak_text_color());
-            ui.vertical_centered(|ui| {
-                ui.add(egui::Label::new(help).sense(egui::Sense::hover()))
-                    .on_hover_text(
-                        "Espacio + arrastrar o botón central: desplazar.
-Rueda: zoom.",
-                    )
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Ayuda de navegación"));
+                ui.separator();
+                let help = icons::text(icons::CIRCLE_HELP, ICON, ui.visuals().weak_text_color());
+                ui.vertical_centered(|ui| {
+                    ui.add(egui::Label::new(help).sense(egui::Sense::hover()))
+                        .on_hover_text(
+                            "Espacio + arrastrar o botón central: desplazar.
+    Rueda: zoom.",
+                        )
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Ayuda de navegación")
+                        });
+                });
             });
         });
     }
@@ -302,7 +307,7 @@ Rueda: zoom.",
             ui.horizontal(|ui| {
                 let mut visible = self.doc.layers[i].visible;
                 let name = self.doc.layers[i].name.clone();
-                let check = ui.checkbox(&mut visible, "").on_hover_text("Visible").with_focus_ring();
+                let check = ui.checkbox(&mut visible, "").on_hover_text("Visible");
                 check.widget_info(|| {
                     egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, visible, format!("Visible: {name}"))
                 });

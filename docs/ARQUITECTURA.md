@@ -271,7 +271,7 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 
 ### 4.5 Estados de componente
 
-`default (bg.raised) → hover (bg.hover) → pressed (bg.pressed) → selected (inversión: fondo active, texto on.active) → focused (anillo de 2 px en focus.ring, 3 px fuera del widget) → disabled (text.disabled, sin hover)`. La selección se indica por inversión del fondo, nunca solo por un matiz de color. El foco **siempre** es visible con teclado (WCAG 2.4.7 / 2.4.11) y se ve también alrededor de un elemento invertido. El botón principal de cada diálogo (Aplicar, Guardar…, Crear, Descargar e instalar, Reiniciar ahora) usa la inversión; el resto, el botón normal.
+`default (bg.raised) → hover (bg.hover) → pressed (bg.pressed) → selected (inversión: fondo active, texto on.active) → focused (anillo de 2 px en focus.ring, 3 px fuera del widget) → disabled (atenuado propio de egui, sin hover)`. El anillo de foco lo pinta una sola pasada al final de cada cuadro alrededor de cualquier widget con foco, propio o de egui; los campos de texto con foco además llevan borde en `focus.ring`. La selección se indica por inversión del fondo, nunca solo por un matiz de color. El foco **siempre** es visible con teclado (WCAG 2.4.7 / 2.4.11) y se ve también alrededor de un elemento invertido. El botón principal de cada diálogo (Aplicar, Guardar…, Crear, Descargar e instalar, Reiniciar ahora) usa la inversión; el resto, el botón normal.
 
 ### 4.6 Movimiento
 

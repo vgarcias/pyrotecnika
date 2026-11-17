@@ -64,8 +64,11 @@ pub(crate) fn style(p: &Palette) -> egui::Style {
     let shadow = Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(90) };
     v.window_shadow = shadow;
     v.popup_shadow = shadow;
-    v.selection.bg_fill = p.active.gamma_multiply(0.35);
-    v.selection.stroke = Stroke::new(1.0, p.on_active);
+    // Relleno translúcido que deja leer el texto encima (≥ 4.5:1) y, en
+    // selection.stroke, el borde de un campo con foco y el texto de la
+    // entrada elegida de un combo: ambos en focus_ring.
+    v.selection.bg_fill = p.active.gamma_multiply(0.25);
+    v.selection.stroke = Stroke::new(p.stroke_width, p.focus_ring);
     v.text_cursor.stroke = Stroke::new(2.0, p.text_primary);
 
     let wd = &mut v.widgets;
@@ -148,7 +151,7 @@ mod tests {
         assert_eq!(s.visuals.window_fill, DARK.bg_raised);
         assert_eq!(s.visuals.warn_fg_color, DARK.text_primary);
         assert_eq!(s.visuals.error_fg_color, DARK.text_primary);
-        assert_eq!(s.visuals.selection.stroke.color, DARK.on_active);
+        assert_eq!(s.visuals.selection.stroke.color, DARK.focus_ring);
         assert!(s.visuals.dark_mode);
         assert!(!style(&LIGHT).visuals.dark_mode);
         assert_eq!(style(&HIGH_CONTRAST).visuals.widgets.inactive.bg_stroke.width, 2.0);
@@ -222,5 +225,34 @@ mod tests {
         assert_eq!(frame.inner_margin, egui::Margin::same(PANEL_MARGIN));
         assert_eq!(PANEL_MARGIN, 12);
         assert_eq!(frame.fill, LIGHT.bg_panel);
+    }
+
+    /// Color del relleno translúcido de la selección compuesto sobre `bg`.
+    fn over(fill: Color32, bg: Color32) -> Color32 {
+        let k = 1.0 - f32::from(fill.a()) / 255.0;
+        let ch = |f: u8, b: u8| (f32::from(f) + f32::from(b) * k).round() as u8;
+        Color32::from_rgb(ch(fill.r(), bg.r()), ch(fill.g(), bg.g()), ch(fill.b(), bg.b()))
+    }
+
+    #[test]
+    fn la_seleccion_se_lee_y_el_campo_con_foco_tiene_borde() {
+        use crate::design::tokens::contrast;
+        for p in [&DARK, &LIGHT, &HIGH_CONTRAST] {
+            let s = style(p);
+            let sel = s.visuals.selection;
+            for bg in [p.bg_raised, p.bg_panel] {
+                let under = over(sel.bg_fill, bg);
+                // Entrada elegida de un combo (texto en selection.stroke).
+                assert!(
+                    contrast(sel.stroke.color, under) >= 4.5,
+                    "texto elegido {:?} sobre {under:?}",
+                    sel.stroke.color
+                );
+                // Texto seleccionado dentro de un campo (text_primary).
+                assert!(contrast(p.text_primary, under) >= 4.5, "texto seleccionado sobre {under:?}");
+            }
+            // Un TextEdit con foco dibuja su borde con selection.stroke.
+            assert!(contrast(sel.stroke.color, p.bg_raised) >= 3.0, "borde del campo con foco invisible");
+        }
     }
 }
