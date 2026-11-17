@@ -51,21 +51,26 @@ Fuente de verdad: `docs/ARQUITECTURA.md` (requisitos en §5, hoja de ruta de 8 f
 - **Rendimiento como requisito:** primer frame < 500 ms, 60 fps durante un trazo en 4096×4096, ninguna operación bloquea la UI más de 50 ms, 0 % de CPU en reposo.
 - **Sin telemetría** y sin bandeja del sistema.
 - **PNG de Fireworks:** las capas propietarias no se leen; se abre la imagen aplanada y se informa.
-- **Estado de la interfaz:** hoy usa el tema por defecto de egui. El sistema de diseño (fase 1) está especificado en `docs/ARQUITECTURA.md` §4 pero no implementado.
+- **Estado de la interfaz:** el sistema de diseño de la fase 1 está implementado en `crates/pyro-ui/src/design/` (paleta neutra, temas claro/oscuro/alto contraste, Inter y JetBrains Mono, inversión para lo activo, escala de UI desde el menú). Detalle en `docs/ARQUITECTURA.md` §4 y `DESIGN.md`.
 
 ## Brand Commitments
 
-- Nombre: **Pyrotecnika**. Motivo de identidad declarado en la arquitectura: brasas y chispas.
-- No imitar el aspecto de Fireworks ni de ningún otro producto existente.
-- Iconografía Lucide (ISC); tipografías previstas Inter y JetBrains Mono (OFL), incluidas en el binario.
-- Los tokens de color y sus contrastes de `docs/ARQUITECTURA.md` §4.1 son la propuesta vigente de la fase 1.
+- Nombre: **Pyrotecnika**.
+- **Paleta neutra:** la interfaz usa solo grises, blanco y negro. Nada de naranjas ni rojos, ni color de acento (decisión del autor, 2026-11-16). Lo activo se marca por inversión.
+- **Logotipo:** existe en `logo/` y se usa solo para el icono de la app. No es referencia visual de la interfaz.
+- **Estándar de la categoría:** la interfaz se parece a un editor de imagen de escritorio cualquiera, sin rasgos propios llamativos.
+- **Vara de facilidad de uso:** Macromedia Fireworks y Paint Shop Pro, por lo fácil que era usarlos y su curva de aprendizaje sencilla, no por su aspecto. No imitar el aspecto de ningún producto existente.
+- Iconografía Lucide (ISC); tipografías Inter y JetBrains Mono (OFL), incluidas en el binario.
+- Los tokens y contrastes vigentes están en `docs/ARQUITECTURA.md` §4.1.
 
 ## Evidence on Hand
 
 - `docs/ARQUITECTURA.md`: arquitectura, sistema de diseño propuesto, requisitos y hoja de ruta.
 - Código de la interfaz en `crates/pyro-ui/src/app/`; iconos en `crates/pyro-ui/assets/icons/`.
 - Muestras reales de PNG de Fireworks en la instalación local de Fireworks CS6 (no redistribuibles).
-- No hay logotipo, capturas de referencia, usuarios externos, testimonios ni métricas de uso. No inventarlos.
+- Logotipo en `logo/` (solo icono de la app).
+- Capturas de referencia aprobadas de la fase 1 en `crates/pyro-ui/tests/snapshots/`.
+- No hay usuarios externos, testimonios ni métricas de uso. No inventarlos.
 
 ## Product Principles
 

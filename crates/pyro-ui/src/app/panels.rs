@@ -8,10 +8,14 @@ use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
+use crate::design::fonts::title_style;
+use crate::design::style::{self, ThemeChoice};
+use crate::design::widgets;
 
 impl PyroApp {
     pub(super) fn menu_bar(&mut self, ctx: &egui::Context) {
         let mut action = None;
+        let mut theme_pick = None;
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 let mut item = |ui: &mut egui::Ui, label: &str, shortcut: &str, a: Action, enabled: bool| {
@@ -59,6 +63,27 @@ impl PyroApp {
                     item(ui, "Alejar", "Ctrl+-", Action::ZoomOut, true);
                     item(ui, "Ajustar a la ventana", "Ctrl+0", Action::Fit, true);
                     item(ui, "Tamaño real", "Ctrl+1", Action::ActualSize, true);
+                    ui.separator();
+                    ui.menu_button("Tema", |ui| {
+                        for (label, choice) in [
+                            ("Seguir al sistema", ThemeChoice::System),
+                            ("Claro", ThemeChoice::Light),
+                            ("Oscuro", ThemeChoice::Dark),
+                            ("Alto contraste", ThemeChoice::HighContrast),
+                        ] {
+                            if ui.radio(self.theme == choice, label).clicked() {
+                                theme_pick = Some(choice);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.menu_button("Tamaño de la interfaz", |ui| {
+                        item(ui, "Aumentar", "", Action::UiScaleUp, self.ui_scale < 2.0);
+                        item(ui, "Reducir", "", Action::UiScaleDown, self.ui_scale > 0.8);
+                        item(ui, "Restablecer (100 %)", "", Action::UiScaleReset, self.ui_scale != 1.0);
+                        ui.separator();
+                        ui.weak(format!("Actual: {:.0} %", self.ui_scale * 100.0));
+                    });
                 });
                 ui.menu_button("Ayuda", |ui| {
                     item(ui, "Buscar actualizaciones…", "", Action::CheckUpdates, true);
@@ -67,6 +92,9 @@ impl PyroApp {
                 });
             });
         });
+        if let Some(choice) = theme_pick {
+            action = Some(Action::SetTheme(choice));
+        }
         if let Some(a) = action {
             self.run(a, ctx);
         }
@@ -75,12 +103,12 @@ impl PyroApp {
     pub(super) fn status_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("estado").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("{}×{} px", self.doc.width, self.doc.height));
+                ui.monospace(format!("{}×{} px", self.doc.width, self.doc.height));
                 ui.separator();
-                ui.label(format!("{:.0} %", self.zoom * 100.0));
+                ui.monospace(format!("{:.0} %", self.zoom * 100.0));
                 if let Some((x, y)) = self.hover_px.and_then(|p| self.inside(p)) {
                     ui.separator();
-                    ui.label(format!("x {x}, y {y}"));
+                    ui.monospace(format!("x {x}, y {y}"));
                 }
                 ui.separator();
                 if self.history.is_modified() {
@@ -102,53 +130,53 @@ impl PyroApp {
             &[Tool::Brush, Tool::Eraser, Tool::Clone, Tool::Blur],
             &[Tool::Bucket, Tool::Eyedropper],
         ];
-        let width = 2.0 * BUTTON + GAP + 2.0 * ctx.style().spacing.window_margin.leftf();
-        egui::SidePanel::left("herramientas").resizable(false).exact_width(width).show(ctx, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
-            ui.add_space(GAP);
-            for (i, group) in GROUPS.iter().enumerate() {
-                if i > 0 {
-                    ui.separator();
+        let width = 2.0 * BUTTON + GAP + 2.0 * f32::from(style::PANEL_MARGIN);
+        let frame = style::side_panel_frame(&ctx.style());
+        egui::SidePanel::left("herramientas").resizable(false).exact_width(width).frame(frame).show(ctx, |ui| {
+            // Al 200 % en la ventana mínima la columna no cabe: se desplaza.
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(GAP, GAP);
+                ui.add_space(GAP);
+                for (i, group) in GROUPS.iter().enumerate() {
+                    if i > 0 {
+                        ui.separator();
+                    }
+                    for row in group.chunks(2) {
+                        ui.horizontal(|ui| {
+                            for &tool in row {
+                                self.tool_button(ui, tool);
+                            }
+                        });
+                    }
                 }
-                for row in group.chunks(2) {
-                    ui.horizontal(|ui| {
-                        for &tool in row {
-                            self.tool_button(ui, tool, BUTTON, ICON);
-                        }
-                    });
-                }
-            }
-            ui.separator();
-            let help = icons::text(icons::CIRCLE_HELP, ICON, ui.visuals().weak_text_color());
-            ui.vertical_centered(|ui| {
-                ui.add(egui::Label::new(help).sense(egui::Sense::hover()))
-                    .on_hover_text(
-                        "Espacio + arrastrar o botón central: desplazar.
-Rueda: zoom.",
-                    )
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Ayuda de navegación"));
+                ui.separator();
+                let help = icons::text(icons::CIRCLE_HELP, ICON, ui.visuals().weak_text_color());
+                ui.vertical_centered(|ui| {
+                    ui.add(egui::Label::new(help).sense(egui::Sense::hover()))
+                        .on_hover_text(
+                            "Espacio + arrastrar o botón central: desplazar.
+    Rueda: zoom.",
+                        )
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Ayuda de navegación")
+                        });
+                });
             });
         });
     }
 
     /// Botón de herramienta solo con icono. El nombre y el atajo van en el
-    /// tooltip y en la etiqueta accesible, para los lectores de pantalla.
-    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool, button: f32, icon: f32) {
+    /// tooltip; el nombre accesible es solo el nombre.
+    fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
         let selected = self.tool == tool;
-        let visuals = ui.visuals();
-        let tint = if selected { visuals.selection.stroke.color } else { visuals.widgets.inactive.fg_stroke.color };
-        let glyph = icons::text(tool.icon(), icon, tint);
-        let response = ui.add(egui::Button::new(glyph).selected(selected).min_size(egui::vec2(button, button)));
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, tool.label())
-        });
-        if response.on_hover_text(tool.label()).clicked() {
+        if widgets::tool_button(ui, tool.icon(), selected, tool.label(), tool.shortcut()).clicked() {
             self.tool = tool;
         }
     }
 
     pub(super) fn side_panel(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("propiedades").resizable(true).default_width(280.0).show(ctx, |ui| {
+        let frame = style::side_panel_frame(&ctx.style());
+        egui::SidePanel::right("propiedades").resizable(true).default_width(280.0).frame(frame).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 self.tool_options(ui);
                 ui.separator();
@@ -181,7 +209,7 @@ Rueda: zoom.",
     }
 
     pub(super) fn tool_options(&mut self, ui: &mut egui::Ui) {
-        ui.strong(self.tool.label());
+        ui.label(egui::RichText::new(self.tool.label()).text_style(title_style()));
         if self.tool.edits_pixels() {
             if let Some(reason) = self.layer_block() {
                 guard::notice(ui, Tone::Warn, &reason);
@@ -234,33 +262,33 @@ Rueda: zoom.",
     }
 
     pub(super) fn layers_ui(&mut self, ui: &mut egui::Ui) {
-        ui.strong("Capas");
+        ui.label(egui::RichText::new("Capas").text_style(title_style()));
         let locked = self.filter_dialog.is_some();
         let mut op: Option<fn(&mut Document) -> bool> = None;
         ui.add_enabled_ui(!locked, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Nueva").clicked() {
+                if widgets::button(ui, "Nueva").clicked() {
                     op = Some(|d| {
                         d.add_layer();
                         true
                     });
                 }
-                if ui.button("Duplicar").clicked() {
+                if widgets::button(ui, "Duplicar").clicked() {
                     op = Some(|d| {
                         d.duplicate_layer();
                         true
                     });
                 }
-                if ui.button("Eliminar").clicked() {
+                if widgets::button(ui, "Eliminar").clicked() {
                     op = Some(Document::delete_layer);
                 }
-                if ui.button("Subir").clicked() {
+                if widgets::button(ui, "Subir").clicked() {
                     op = Some(Document::move_layer_up);
                 }
-                if ui.button("Bajar").clicked() {
+                if widgets::button(ui, "Bajar").clicked() {
                     op = Some(Document::move_layer_down);
                 }
-                if ui.button("Combinar abajo").clicked() {
+                if widgets::button(ui, "Combinar abajo").clicked() {
                     op = Some(Document::merge_down);
                 }
             });
@@ -278,10 +306,15 @@ Rueda: zoom.",
         for i in (0..self.doc.layers.len()).rev() {
             ui.horizontal(|ui| {
                 let mut visible = self.doc.layers[i].visible;
-                if ui.checkbox(&mut visible, "").on_hover_text("Visible").changed() {
+                let name = self.doc.layers[i].name.clone();
+                let check = ui.checkbox(&mut visible, "").on_hover_text("Visible");
+                check.widget_info(|| {
+                    egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, visible, format!("Visible: {name}"))
+                });
+                if check.changed() {
                     toggle = Some(i);
                 }
-                if ui.selectable_label(i == self.doc.active, &self.doc.layers[i].name).clicked() {
+                if widgets::active_row(ui, i == self.doc.active, &name).clicked() {
                     select = Some(i);
                 }
             });

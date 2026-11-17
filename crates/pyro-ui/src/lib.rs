@@ -1,5 +1,6 @@
 //! Interfaz de escritorio de Pyrotecnika (egui).
 
-mod app;
+pub(crate) mod app;
+mod design;
 
 pub use app::PyroApp;

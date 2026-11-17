@@ -5,6 +5,7 @@ use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, TextureOptions, Vec2};
 use pyro_core::selection::Mask;
 
 use super::PyroApp;
+use crate::design::tokens::{CHECKER_A, CHECKER_B, OVERLAY_DARK, OVERLAY_LIGHT};
 
 impl PyroApp {
     pub(super) fn origin(&self, rect: Rect) -> Pos2 {
@@ -58,11 +59,11 @@ impl PyroApp {
             self.sel_dirty = false;
         }
         if self.checker.is_none() {
-            let mut img = ColorImage::new([16, 16], Color32::from_gray(204));
+            let mut img = ColorImage::new([16, 16], CHECKER_A);
             for y in 0..16 {
                 for x in 0..16 {
                     if (x / 8 + y / 8) % 2 == 0 {
-                        img.pixels[y * 16 + x] = Color32::from_gray(255);
+                        img.pixels[y * 16 + x] = CHECKER_B;
                     }
                 }
             }
@@ -85,7 +86,7 @@ pub(super) fn selection_overlay(mask: &Mask) -> ColorImage {
             let edge =
                 x == 0 || y == 0 || x + 1 == w || y + 1 == h || !on(i - 1) || !on(i + 1) || !on(i - w) || !on(i + w);
             if edge {
-                img.pixels[i] = if (x + y) / 4 % 2 == 0 { Color32::BLACK } else { Color32::WHITE };
+                img.pixels[i] = if (x + y) / 4 % 2 == 0 { OVERLAY_DARK } else { OVERLAY_LIGHT };
             }
         }
     }

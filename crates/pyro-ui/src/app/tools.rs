@@ -25,17 +25,17 @@ pub(super) enum Tool {
 }
 
 pub(super) const TOOLS: [(Tool, &str, Key); 11] = [
-    (Tool::Move, "Mover (V)", Key::V),
-    (Tool::Marquee, "Marco (M)", Key::M),
-    (Tool::Ellipse, "Elipse (U)", Key::U),
-    (Tool::Lasso, "Lazo (L)", Key::L),
-    (Tool::Wand, "Varita mágica (W)", Key::W),
-    (Tool::Brush, "Pincel (B)", Key::B),
-    (Tool::Eraser, "Borrador (E)", Key::E),
-    (Tool::Clone, "Tampón de clonar (S)", Key::S),
-    (Tool::Blur, "Desenfocar (R)", Key::R),
-    (Tool::Bucket, "Bote de pintura (G)", Key::G),
-    (Tool::Eyedropper, "Cuentagotas (I)", Key::I),
+    (Tool::Move, "Mover", Key::V),
+    (Tool::Marquee, "Marco", Key::M),
+    (Tool::Ellipse, "Elipse", Key::U),
+    (Tool::Lasso, "Lazo", Key::L),
+    (Tool::Wand, "Varita mágica", Key::W),
+    (Tool::Brush, "Pincel", Key::B),
+    (Tool::Eraser, "Borrador", Key::E),
+    (Tool::Clone, "Tampón de clonar", Key::S),
+    (Tool::Blur, "Desenfocar", Key::R),
+    (Tool::Bucket, "Bote de pintura", Key::G),
+    (Tool::Eyedropper, "Cuentagotas", Key::I),
 ];
 
 impl Tool {
@@ -78,8 +78,14 @@ impl Tool {
         }
     }
 
+    /// Nombre de la herramienta, sin atajo (es también su nombre accesible).
     pub(super) fn label(self) -> &'static str {
         TOOLS.iter().find(|(t, _, _)| *t == self).map_or("", |(_, l, _)| l)
+    }
+
+    /// Tecla de la herramienta, para el tooltip («Pincel · B»).
+    pub(super) fn shortcut(self) -> &'static str {
+        TOOLS.iter().find(|(t, _, _)| *t == self).map_or("", |(_, _, k)| k.name())
     }
 }
 
@@ -277,5 +283,17 @@ impl PyroApp {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nombre_y_atajo_separados() {
+        assert_eq!(Tool::Brush.label(), "Pincel");
+        assert_eq!(Tool::Brush.shortcut(), "B");
+        assert!(TOOLS.iter().all(|(_, l, _)| !l.contains('(')));
     }
 }

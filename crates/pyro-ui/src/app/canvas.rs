@@ -9,11 +9,15 @@ use pyro_core::selection::Mask;
 
 use super::tools::{Drag, Tool};
 use super::PyroApp;
+use crate::design::style::palette;
+use crate::design::tokens::{OVERLAY_DARK, OVERLAY_LIGHT};
+use crate::design::widgets::overlay_stroke;
 
 impl PyroApp {
     pub(super) fn canvas_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Lienzo"));
         if self.fit_pending && rect.width() > 50.0 {
             self.fit(rect);
         }
@@ -62,7 +66,8 @@ impl PyroApp {
         self.refresh_textures(&ctx);
 
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, Color32::from_gray(45));
+        let pal = palette(&ctx);
+        painter.rect_filled(rect, 0.0, pal.bg_canvas);
         let canvas = Rect::from_min_size(
             self.origin(rect),
             Vec2::new(self.doc.width as f32, self.doc.height as f32) * self.zoom,
@@ -75,7 +80,7 @@ impl PyroApp {
         if let Some(t) = &self.canvas_tex {
             painter.image(t.id(), canvas, full_uv, Color32::WHITE);
         }
-        painter.rect_stroke(canvas, 0.0, UiStroke::new(1.0_f32, Color32::from_gray(90)), UiStrokeKind::Outside);
+        painter.rect_stroke(canvas, 0.0, UiStroke::new(pal.stroke_width, pal.border_subtle), UiStrokeKind::Outside);
         if let Some(t) = &self.sel_tex {
             painter.image(t.id(), canvas, full_uv, Color32::WHITE);
             if self.zoom < 1.0 {
@@ -84,17 +89,11 @@ impl PyroApp {
                         self.img_to_screen(rect, (x0 as f32, y0 as f32)),
                         self.img_to_screen(rect, (x1 as f32, y1 as f32)),
                     );
-                    painter.rect_stroke(
-                        r,
-                        0.0,
-                        UiStroke::new(1.0_f32, Color32::from_rgb(80, 160, 255)),
-                        UiStrokeKind::Middle,
-                    );
+                    overlay_stroke(&painter, 1.0, |s| egui::Shape::rect_stroke(r, 0.0, s, UiStrokeKind::Middle));
                 }
             }
         }
 
-        let guide = UiStroke::new(1.0_f32, Color32::from_rgb(80, 160, 255));
         match &self.drag {
             Drag::Shape { start, current } => {
                 let r = Rect::from_two_pos(self.img_to_screen(rect, *start), self.img_to_screen(rect, *current));
@@ -105,14 +104,14 @@ impl PyroApp {
                             r.center() + Vec2::new(a.cos() * r.width() / 2.0, a.sin() * r.height() / 2.0)
                         })
                         .collect();
-                    painter.add(egui::Shape::closed_line(pts, guide));
+                    overlay_stroke(&painter, 1.0, |s| egui::Shape::closed_line(pts.clone(), s));
                 } else {
-                    painter.rect_stroke(r, 0.0, guide, UiStrokeKind::Middle);
+                    overlay_stroke(&painter, 1.0, |s| egui::Shape::rect_stroke(r, 0.0, s, UiStrokeKind::Middle));
                 }
             }
             Drag::Lasso { points } => {
                 let pts: Vec<Pos2> = points.iter().map(|p| self.img_to_screen(rect, *p)).collect();
-                painter.add(egui::Shape::line(pts, guide));
+                overlay_stroke(&painter, 1.0, |s| egui::Shape::line(pts.clone(), s));
             }
             _ => {}
         }
@@ -125,8 +124,8 @@ impl PyroApp {
         let blocked = self.tool.edits_pixels() && self.filter_dialog.is_none() && self.layer_block().is_some();
         let show_ring = self.tool.is_brush() && !space && !blocked && ring >= MIN_RING;
         if let (true, Some(h)) = (show_ring, resp.hover_pos()) {
-            painter.circle_stroke(h, ring, UiStroke::new(1.0_f32, Color32::WHITE));
-            painter.circle_stroke(h, ring + 1.0, UiStroke::new(1.0_f32, Color32::BLACK));
+            painter.circle_stroke(h, ring, UiStroke::new(1.0_f32, OVERLAY_LIGHT));
+            painter.circle_stroke(h, ring + 1.0, UiStroke::new(1.0_f32, OVERLAY_DARK));
         }
         if self.tool == Tool::Clone {
             if let Some(src) = self.clone_source {
@@ -139,9 +138,9 @@ impl PyroApp {
                     _ => None,
                 };
                 let c = self.img_to_screen(rect, following.unwrap_or(src));
-                let s = UiStroke::new(1.5_f32, Color32::from_rgb(255, 120, 0));
-                painter.line_segment([c - Vec2::X * 8.0, c + Vec2::X * 8.0], s);
-                painter.line_segment([c - Vec2::Y * 8.0, c + Vec2::Y * 8.0], s);
+                for (a, b) in [(c - Vec2::X * 8.0, c + Vec2::X * 8.0), (c - Vec2::Y * 8.0, c + Vec2::Y * 8.0)] {
+                    overlay_stroke(&painter, 1.5, |s| egui::Shape::line_segment([a, b], s));
+                }
             }
         }
 

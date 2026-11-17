@@ -43,6 +43,13 @@ jobs:
           if grep -rn --include='*.rs' 'cfg(.*target_os' crates app | grep -v '^crates/pyro-platform/'; then
             echo "::error::Mueve el código específico de SO a crates/pyro-platform"; exit 1
           fi
+      - name: Sin colores literales fuera del sistema de diseño
+        run: |
+          if grep -rnE 'Color32::(from_|[A-Z]{3,})' --include='*.rs' crates app \
+             | grep -v '^crates/pyro-ui/src/design/' \
+             | grep -vE 'Color32::(WHITE|TRANSPARENT)\b'; then
+            echo "::error::Usa los tokens de crates/pyro-ui/src/design"; exit 1
+          fi
 
   deny:
     name: Licencias y avisos de seguridad

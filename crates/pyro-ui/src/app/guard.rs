@@ -9,6 +9,7 @@ use eframe::egui;
 use pyro_core::document::Document;
 
 use super::{icons, Action, PyroApp};
+use crate::design::widgets;
 
 /// Severidad de un mensaje de la barra de estado.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,15 +73,25 @@ pub(super) fn io_reason(e: &std::io::Error, writing: bool) -> String {
     }
 }
 
-/// Fila de aviso o error: icono con color y texto con el contraste normal,
-/// para que la severidad no dependa solo del color.
+/// Fila de aviso o error: icono y texto en semibold, para que la severidad
+/// no dependa del color.
 pub(super) fn notice(ui: &mut egui::Ui, tone: Tone, text: &str) {
     ui.horizontal_wrapped(|ui| {
         if let Some(icon) = tone_icon(ui, tone) {
             ui.label(icon);
         }
-        ui.label(text);
+        ui.label(tone_text(tone, text));
     });
+}
+
+/// Avisos y errores en semibold: con el icono, la severidad no depende del
+/// color (la paleta es neutra).
+fn tone_text(tone: Tone, text: &str) -> egui::RichText {
+    let rich = egui::RichText::new(text);
+    match tone {
+        Tone::Info => rich,
+        Tone::Warn | Tone::Error => rich.family(egui::FontFamily::Name(crate::design::fonts::SEMIBOLD.into())),
+    }
 }
 
 fn tone_icon(ui: &egui::Ui, tone: Tone) -> Option<egui::RichText> {
@@ -112,10 +123,7 @@ impl PyroApp {
         if let Some(icon) = tone_icon(ui, *tone) {
             ui.label(icon);
         }
-        let rich = match tone {
-            Tone::Info => egui::RichText::new(text),
-            Tone::Warn | Tone::Error => egui::RichText::new(text).strong(),
-        };
+        let rich = tone_text(*tone, text);
         ui.add(egui::Label::new(rich).truncate()).on_hover_text(text);
     }
 
@@ -233,14 +241,14 @@ impl PyroApp {
             }
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("Exportar primero…").clicked() {
+                if widgets::button(ui, "Exportar primero…").clicked() {
                     choice = Some(Choice::Export);
                 }
-                if ui.button("Descartar cambios").clicked() {
+                if widgets::button(ui, "Descartar cambios").clicked() {
                     choice = Some(Choice::Discard);
                 }
                 // Cancelar recibe el foco: Intro o Espacio nunca descartan.
-                let cancel = ui.button("Cancelar");
+                let cancel = widgets::button(ui, "Cancelar");
                 if focus {
                     cancel.request_focus();
                 }
