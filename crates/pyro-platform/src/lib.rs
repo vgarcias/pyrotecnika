@@ -11,3 +11,6 @@ pub mod updates;
 mod os {
     pub mod macos;
 }
+
+/// La app corre en macOS: Ctrl se presenta como ⌘ en los atajos.
+pub const IS_MAC: bool = cfg!(target_os = "macos");
