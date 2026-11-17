@@ -1,6 +1,7 @@
 //! Comandos de la app: combinaciones de teclas, catálogo, mapa de atajos y
 //! almacenamiento de preferencias (fase 2).
 
+pub(crate) mod catalog;
 pub(crate) mod chord;
 
 /// ¿Se ejecuta en macOS? (Ctrl se muestra como ⌘).

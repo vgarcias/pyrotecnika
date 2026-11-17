@@ -294,11 +294,7 @@ impl PyroApp {
             });
         });
         if let Some(f) = op {
-            let before = self.doc.clone();
-            if f(&mut self.doc) {
-                self.history.push(&before);
-                self.canvas_dirty = true;
-            }
+            self.layer_op(f);
         }
 
         let mut toggle = None;

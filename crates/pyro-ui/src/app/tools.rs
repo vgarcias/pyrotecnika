@@ -10,7 +10,7 @@ use pyro_core::selection::{Mask, SelectMode};
 use super::{icons, Action, PyroApp};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum Tool {
+pub(crate) enum Tool {
     Move,
     Marquee,
     Ellipse,
@@ -24,7 +24,7 @@ pub(super) enum Tool {
     Eyedropper,
 }
 
-pub(super) const TOOLS: [(Tool, &str, Key); 11] = [
+pub(crate) const TOOLS: [(Tool, &str, Key); 11] = [
     (Tool::Move, "Mover", Key::V),
     (Tool::Marquee, "Marco", Key::M),
     (Tool::Ellipse, "Elipse", Key::U),

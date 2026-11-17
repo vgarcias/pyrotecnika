@@ -10,7 +10,7 @@ mod input;
 mod panels;
 #[cfg(test)]
 mod scenes;
-mod tools;
+pub(crate) mod tools;
 mod updates;
 mod view;
 
@@ -33,8 +33,8 @@ use updates::UpdateState;
 
 use crate::design::style::{apply_theme, step_scale, ThemeChoice};
 
-#[derive(Clone, Copy)]
-pub(super) enum Action {
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Action {
     New,
     Open,
     Export,
@@ -56,6 +56,21 @@ pub(super) enum Action {
     UiScaleUp,
     UiScaleDown,
     UiScaleReset,
+    LayerNew,
+    LayerDuplicate,
+    LayerDelete,
+    LayerUp,
+    LayerDown,
+    LayerMergeDown,
+    SelectTool(Tool),
+    BrushSmaller,
+    BrushBigger,
+    OpenPalette,
+    OpenPreferences,
+    #[allow(dead_code)] // Temporal: el menú de recientes llega en la tarea 5.
+    OpenRecent(usize),
+    ClearRecent,
+    RevealInFolder,
 }
 
 pub struct PyroApp {
@@ -218,6 +233,16 @@ impl PyroApp {
 
     // ---------- Acciones ----------
 
+    /// Operación de capa con historial: la misma para botones, menú,
+    /// teclado y paleta.
+    pub(super) fn layer_op(&mut self, f: fn(&mut Document) -> bool) {
+        let before = self.doc.clone();
+        if f(&mut self.doc) {
+            self.history.push(&before);
+            self.canvas_dirty = true;
+        }
+    }
+
     pub(super) fn run(&mut self, action: Action, ctx: &egui::Context) {
         if self.filter_dialog.is_some()
             && !matches!(
@@ -328,6 +353,26 @@ impl PyroApp {
                 };
                 ctx.set_zoom_factor(self.ui_scale);
             }
+            Action::LayerNew => self.layer_op(|d| {
+                d.add_layer();
+                true
+            }),
+            Action::LayerDuplicate => self.layer_op(|d| {
+                d.duplicate_layer();
+                true
+            }),
+            Action::LayerDelete => self.layer_op(Document::delete_layer),
+            Action::LayerUp => self.layer_op(Document::move_layer_up),
+            Action::LayerDown => self.layer_op(Document::move_layer_down),
+            Action::LayerMergeDown => self.layer_op(Document::merge_down),
+            Action::SelectTool(tool) => self.tool = tool,
+            Action::BrushSmaller => self.brush.radius = (self.brush.radius - 2.0).clamp(0.5, 250.0),
+            Action::BrushBigger => self.brush.radius = (self.brush.radius + 2.0).clamp(0.5, 250.0),
+            Action::OpenPalette
+            | Action::OpenPreferences
+            | Action::OpenRecent(_)
+            | Action::ClearRecent
+            | Action::RevealInFolder => todo!("fase 2, tareas 5 a 8"),
         }
     }
 
