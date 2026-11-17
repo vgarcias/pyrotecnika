@@ -69,13 +69,13 @@ pub(crate) fn style(p: &Palette) -> egui::Style {
     // entrada elegida de un combo: ambos en focus_ring.
     v.selection.bg_fill = p.active.gamma_multiply(0.25);
     v.selection.stroke = Stroke::new(p.stroke_width, p.focus_ring);
-    v.text_cursor.stroke = Stroke::new(2.0, p.text_primary);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, p.text_primary);
 
     let wd = &mut v.widgets;
     wd.noninteractive.bg_fill = p.bg_panel;
     wd.noninteractive.weak_bg_fill = weak_target(p.text_primary, p.text_secondary);
     wd.noninteractive.bg_stroke = Stroke::new(w, p.border_subtle);
-    wd.noninteractive.fg_stroke = Stroke::new(1.0, p.text_primary);
+    wd.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
     wd.noninteractive.corner_radius = radius;
     for (state, fill) in
         [(&mut wd.inactive, p.bg_raised), (&mut wd.hovered, p.bg_hover), (&mut wd.active, p.bg_pressed)]
@@ -83,7 +83,7 @@ pub(crate) fn style(p: &Palette) -> egui::Style {
         state.bg_fill = fill;
         state.weak_bg_fill = fill;
         state.bg_stroke = Stroke::new(w, p.border_control);
-        state.fg_stroke = Stroke::new(1.0, p.text_primary);
+        state.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
         state.corner_radius = radius;
         state.expansion = 0.0;
     }

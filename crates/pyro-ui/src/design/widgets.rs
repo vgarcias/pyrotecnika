@@ -32,7 +32,12 @@ pub(crate) fn focus_ring_target(ctx: &egui::Context) -> Option<(LayerId, egui::R
 pub(crate) fn paint_focus_ring(ctx: &egui::Context) {
     if let Some((layer, ring, clip)) = focus_ring_target(ctx) {
         let color = palette(ctx).focus_ring;
-        ctx.layer_painter(layer).with_clip_rect(clip).rect_stroke(ring, 6, Stroke::new(2.0, color), StrokeKind::Middle);
+        ctx.layer_painter(layer).with_clip_rect(clip).rect_stroke(
+            ring,
+            6,
+            Stroke::new(2.0_f32, color),
+            StrokeKind::Middle,
+        );
     }
 }
 
@@ -153,8 +158,8 @@ mod tests {
     #[test]
     fn la_superposicion_es_negro_ancho_bajo_blanco_fino() {
         let [under, over] = overlay_strokes(1.0);
-        assert_eq!(under, Stroke::new(3.0, crate::design::tokens::OVERLAY_DARK));
-        assert_eq!(over, Stroke::new(1.0, crate::design::tokens::OVERLAY_LIGHT));
+        assert_eq!(under, Stroke::new(3.0_f32, crate::design::tokens::OVERLAY_DARK));
+        assert_eq!(over, Stroke::new(1.0_f32, crate::design::tokens::OVERLAY_LIGHT));
     }
 
     #[test]
