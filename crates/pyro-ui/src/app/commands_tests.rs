@@ -144,3 +144,27 @@ fn mostrar_en_carpeta_sin_archivo_avisa() {
     h.state_mut().run(Action::RevealInFolder, &ctx);
     assert!(matches!(h.state().status.tone, super::Tone::Warn));
 }
+
+#[test]
+fn ctrl_k_busca_y_ejecuta() {
+    let mut h = main_scene();
+    h.press_key_modifiers(ctrl(), Key::K);
+    h.run_steps(2);
+    assert!(h.state().palette.is_some());
+    h.get_all_by_role(Role::TextInput).next().expect("campo de búsqueda").type_text("gaus");
+    h.run_steps(2);
+    h.press_key(Key::Enter);
+    h.run_steps(3);
+    assert!(h.state().palette.is_none());
+    assert!(h.state().filter_dialog.is_some());
+}
+
+#[test]
+fn esc_cierra_la_paleta() {
+    let mut h = main_scene();
+    h.press_key_modifiers(ctrl(), Key::K);
+    h.run_steps(2);
+    h.press_key(Key::Escape);
+    h.run_steps(2);
+    assert!(h.state().palette.is_none());
+}

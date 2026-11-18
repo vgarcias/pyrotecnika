@@ -9,6 +9,7 @@ mod dialogs;
 mod guard;
 pub(crate) mod icons;
 mod input;
+mod palette;
 mod panels;
 #[cfg(test)]
 mod scenes;
@@ -131,6 +132,8 @@ pub struct PyroApp {
     store: Store,
     /// Ya se avisó de que no se pudo guardar la configuración.
     save_warned: bool,
+    /// Paleta de comandos abierta (Ctrl+K).
+    palette: Option<palette::Palette>,
 }
 
 impl PyroApp {
@@ -192,6 +195,7 @@ impl PyroApp {
             settings,
             store,
             save_warned: false,
+            palette: None,
         };
         if !warns.is_empty() {
             app.warn(warns.join(" "));
@@ -237,8 +241,8 @@ impl PyroApp {
             Action::ClearRecent => !self.settings.recent.files.is_empty(),
             Action::OpenRecent(i) => i < self.settings.recent.files.len(),
             Action::RevealInFolder => self.source_path.is_some(),
-            // Llegan en las tareas 7 y 8 del plan de la fase 2.
-            Action::OpenPalette | Action::OpenPreferences => false,
+            // Llega en la tarea 8 del plan de la fase 2.
+            Action::OpenPreferences => false,
             _ => true,
         }
     }
@@ -471,8 +475,9 @@ impl PyroApp {
                     }
                 }
             },
-            // Llegan en las tareas 7 y 8 del plan de la fase 2.
-            Action::OpenPalette | Action::OpenPreferences => {}
+            Action::OpenPalette => self.palette = Some(palette::Palette::new()),
+            // Llega en la tarea 8 del plan de la fase 2.
+            Action::OpenPreferences => {}
         }
     }
 
@@ -507,6 +512,7 @@ impl eframe::App for PyroApp {
         self.export_window(ctx);
         self.new_window(ctx);
         self.update_window(ctx);
+        self.palette_window(ctx);
         self.confirm_window(ctx);
         self.sync_title(ctx);
         crate::design::widgets::paint_focus_ring(ctx);

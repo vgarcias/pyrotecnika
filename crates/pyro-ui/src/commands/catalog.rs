@@ -23,7 +23,6 @@ pub(crate) enum Category {
 }
 
 impl Category {
-    #[allow(dead_code)] // Temporal: lo usan la paleta y el editor (tareas 7 y 8).
     pub(crate) fn label(self) -> &'static str {
         match self {
             File => "Archivo",
