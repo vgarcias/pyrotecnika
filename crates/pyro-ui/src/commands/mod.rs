@@ -4,6 +4,7 @@
 pub(crate) mod catalog;
 pub(crate) mod chord;
 pub(crate) mod keymap;
+pub(crate) mod store;
 
 /// ¿Se ejecuta en macOS? (Ctrl se muestra como ⌘).
 pub(crate) fn is_mac() -> bool {

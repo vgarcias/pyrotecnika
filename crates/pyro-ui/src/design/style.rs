@@ -6,7 +6,8 @@ use super::fonts::text_styles;
 use super::tokens::{Palette, DARK, HIGH_CONTRAST, LIGHT};
 
 /// Tema elegido en Ver › Tema.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum ThemeChoice {
     System,
     Light,
