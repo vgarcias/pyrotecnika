@@ -11,8 +11,10 @@ pub(crate) mod icons;
 mod input;
 mod palette;
 mod panels;
+mod prefs;
 #[cfg(test)]
 mod scenes;
+mod shortcuts;
 pub(crate) mod tools;
 mod updates;
 mod view;
@@ -134,6 +136,8 @@ pub struct PyroApp {
     save_warned: bool,
     /// Paleta de comandos abierta (Ctrl+K).
     palette: Option<palette::Palette>,
+    /// Editar › Preferencias… abierta.
+    prefs: Option<prefs::PrefsDialog>,
 }
 
 impl PyroApp {
@@ -196,6 +200,7 @@ impl PyroApp {
             store,
             save_warned: false,
             palette: None,
+            prefs: None,
         };
         if !warns.is_empty() {
             app.warn(warns.join(" "));
@@ -241,8 +246,6 @@ impl PyroApp {
             Action::ClearRecent => !self.settings.recent.files.is_empty(),
             Action::OpenRecent(i) => i < self.settings.recent.files.len(),
             Action::RevealInFolder => self.source_path.is_some(),
-            // Llega en la tarea 8 del plan de la fase 2.
-            Action::OpenPreferences => false,
             _ => true,
         }
     }
@@ -476,8 +479,7 @@ impl PyroApp {
                 }
             },
             Action::OpenPalette => self.palette = Some(palette::Palette::new()),
-            // Llega en la tarea 8 del plan de la fase 2.
-            Action::OpenPreferences => {}
+            Action::OpenPreferences => self.prefs = Some(prefs::PrefsDialog::new()),
         }
     }
 
@@ -513,6 +515,7 @@ impl eframe::App for PyroApp {
         self.new_window(ctx);
         self.update_window(ctx);
         self.palette_window(ctx);
+        self.prefs_window(ctx);
         self.confirm_window(ctx);
         self.sync_title(ctx);
         crate::design::widgets::paint_focus_ring(ctx);

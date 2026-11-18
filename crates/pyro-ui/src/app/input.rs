@@ -16,7 +16,7 @@ impl PyroApp {
 
         // Con la confirmación abierta, o escribiendo en un campo, los atajos
         // no actúan sobre el documento.
-        if self.confirm.is_some() || ctx.wants_keyboard_input() {
+        if self.confirm.is_some() || self.prefs.is_some() || ctx.wants_keyboard_input() {
             return;
         }
         let pressed: Vec<(Chord, bool)> = ctx.input(|i| {

@@ -168,3 +168,100 @@ fn esc_cierra_la_paleta() {
     h.run_steps(2);
     assert!(h.state().palette.is_none());
 }
+
+// ---------- Preferencias › Atajos ----------
+
+fn ch(s: &str) -> Chord {
+    Chord::parse(s).unwrap()
+}
+
+/// Preferencias abiertas en Atajos, con «Exportar…» elegido y esperando
+/// una combinación.
+fn capturing_export() -> Harness<'static, PyroApp> {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::OpenPreferences, &ctx);
+    h.run_steps(2);
+    h.get_by_label("Atajos").click();
+    h.run_steps(2);
+    h.get_all_by_label("Exportar…").next().expect("fila de Exportar…").click(); // la primera es la fila de la lista; la segunda, el botón de exportar atajos
+    h.run_steps(2);
+    h.get_by_label("+ Añadir").click();
+    h.run_steps(2);
+    h
+}
+
+#[test]
+fn reasignar_un_atajo() {
+    let mut h = capturing_export();
+    h.press_key_modifiers(ctrl() | Modifiers::SHIFT, Key::E);
+    h.run_steps(2);
+    assert!(h.state().keymap.chords("file.export").contains(&ch("Ctrl+Shift+E")));
+    h.press_key(Key::Escape);
+    h.run_steps(2);
+    assert!(h.state().prefs.is_none());
+    h.press_key_modifiers(ctrl() | Modifiers::SHIFT, Key::E);
+    h.run_steps(2);
+    assert!(h.state().export_dialog.is_some());
+}
+
+#[test]
+fn conflicto_pide_confirmacion() {
+    let mut h = capturing_export();
+    h.press_key_modifiers(ctrl(), Key::K);
+    h.run_steps(2);
+    assert!(h.query_by_label_contains("ya lo usa «Paleta de comandos»").is_some());
+    h.get_by_label("Cancelar").click();
+    h.run_steps(2);
+    assert_eq!(h.state().keymap, crate::commands::keymap::Keymap::fireworks());
+    h.get_by_label("+ Añadir").click();
+    h.run_steps(2);
+    h.press_key_modifiers(ctrl(), Key::K);
+    h.run_steps(2);
+    h.get_by_label("Reasignar").click();
+    h.run_steps(2);
+    assert!(h.state().keymap.chords("file.export").contains(&ch("Ctrl+K")));
+    assert!(h.state().keymap.chords("edit.palette").is_empty());
+}
+
+#[test]
+fn esc_cancela_la_captura_sin_cerrar() {
+    let mut h = capturing_export();
+    h.press_key(Key::Escape);
+    h.run_steps(2);
+    assert!(h.state().prefs.as_ref().is_some_and(|p| !p.capturing()));
+    assert_eq!(h.state().keymap, crate::commands::keymap::Keymap::fireworks());
+}
+
+#[test]
+fn la_captura_no_ejecuta_el_atajo() {
+    let mut h = capturing_export();
+    let before = h.state().history.can_undo();
+    h.press_key_modifiers(ctrl(), Key::Z);
+    h.run_steps(2);
+    assert_eq!(h.state().history.can_undo(), before);
+    assert!(h.query_by_label_contains("ya lo usa «Deshacer»").is_some());
+}
+
+#[test]
+fn restablecer_todos() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().to_path_buf();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| PyroApp::with_config(cc, Some(p.clone())));
+    h.run_steps(2);
+    let ctx = h.ctx.clone();
+    h.state_mut().keymap.assign("file.export", ch("Ctrl+E"));
+    h.state_mut().keymap.assign("file.open", ch("Ctrl+J"));
+    h.state_mut().run(Action::OpenPreferences, &ctx);
+    h.run_steps(2);
+    h.get_by_label("Atajos").click();
+    h.run_steps(2);
+    h.get_by_label("Restablecer todos a Fireworks").click();
+    h.run_steps(2);
+    assert_eq!(h.state().keymap, crate::commands::keymap::Keymap::fireworks());
+    let text = std::fs::read_to_string(dir.path().join("keymap.toml")).unwrap();
+    let file: crate::commands::keymap::KeymapFile = toml::from_str(&text).unwrap();
+    assert!(file.bindings.is_empty());
+}
