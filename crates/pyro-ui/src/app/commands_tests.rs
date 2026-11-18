@@ -135,3 +135,12 @@ fn tema_y_escala_se_recuerdan() {
     assert_eq!(h.state().theme, ThemeChoice::Light);
     assert_eq!(h.state().ui_scale, 1.1);
 }
+
+#[test]
+fn mostrar_en_carpeta_sin_archivo_avisa() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    assert!(!h.state().available(Action::RevealInFolder));
+    h.state_mut().run(Action::RevealInFolder, &ctx);
+    assert!(matches!(h.state().status.tone, super::Tone::Warn));
+}

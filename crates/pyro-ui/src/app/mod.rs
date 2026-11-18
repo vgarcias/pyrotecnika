@@ -236,8 +236,9 @@ impl PyroApp {
             Action::LayerDown | Action::LayerMergeDown => active > 0,
             Action::ClearRecent => !self.settings.recent.files.is_empty(),
             Action::OpenRecent(i) => i < self.settings.recent.files.len(),
-            // Llegan en las tareas 6 a 8 del plan de la fase 2.
-            Action::RevealInFolder | Action::OpenPalette | Action::OpenPreferences => false,
+            Action::RevealInFolder => self.source_path.is_some(),
+            // Llegan en las tareas 7 y 8 del plan de la fase 2.
+            Action::OpenPalette | Action::OpenPreferences => false,
             _ => true,
         }
     }
@@ -462,8 +463,16 @@ impl PyroApp {
                 self.settings.recent.clear();
                 self.save_settings();
             }
-            // Llegan en las tareas 6 a 8 del plan de la fase 2.
-            Action::OpenPalette | Action::OpenPreferences | Action::RevealInFolder => {}
+            Action::RevealInFolder => match &self.source_path {
+                None => self.warn("El documento no viene de un archivo: no hay carpeta que mostrar."),
+                Some(path) => {
+                    if let Err(e) = pyro_platform::reveal::reveal(path) {
+                        self.warn(format!("No se pudo abrir la carpeta: {e}."));
+                    }
+                }
+            },
+            // Llegan en las tareas 7 y 8 del plan de la fase 2.
+            Action::OpenPalette | Action::OpenPreferences => {}
         }
     }
 

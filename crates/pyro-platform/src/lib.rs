@@ -6,6 +6,7 @@
 
 pub mod open_files;
 pub mod paths;
+pub mod reveal;
 pub mod updates;
 
 #[cfg(target_os = "macos")]
