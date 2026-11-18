@@ -4,9 +4,23 @@ use std::path::PathBuf;
 
 /// Carpeta de `settings.toml` y `keymap.toml`: `%APPDATA%\Pyrotecnika\config`
 /// en Windows, `~/Library/Application Support/io.Pyrotecnika` en macOS y
-/// `~/.config/pyrotecnika` en Linux. `None` si el SO no da carpeta de usuario.
+/// `$XDG_CONFIG_HOME/pyrotecnika` (o `~/.config/pyrotecnika`) en Linux.
+/// `None` si el SO no da carpeta de usuario.
+///
+/// Se calcula a mano en vez de con el crate `directories`, que arrastra
+/// `option-ext` (MPL-2.0, rechazada por `deny.toml`).
 pub fn config_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io", "", "Pyrotecnika").map(|d| d.config_dir().to_path_buf())
+    let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(target_os = "windows") {
+        env("APPDATA").map(|d| d.join("Pyrotecnika").join("config"))
+    } else if cfg!(target_os = "macos") {
+        env("HOME").map(|h| h.join("Library/Application Support/io.Pyrotecnika"))
+    } else {
+        env("XDG_CONFIG_HOME")
+            .filter(|p| p.is_absolute())
+            .or_else(|| env("HOME").map(|h| h.join(".config")))
+            .map(|d| d.join("pyrotecnika"))
+    }
 }
 
 #[cfg(test)]
