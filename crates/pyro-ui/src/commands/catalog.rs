@@ -23,6 +23,7 @@ pub(crate) enum Category {
 }
 
 impl Category {
+    #[allow(dead_code)] // Temporal: lo usan la paleta y el editor (tareas 7 y 8).
     pub(crate) fn label(self) -> &'static str {
         match self {
             File => "Archivo",
@@ -193,7 +194,7 @@ mod tests {
 
     #[test]
     fn todas_las_herramientas_y_filtros_estan() {
-        for (tool, _, _) in TOOLS {
+        for (tool, _) in TOOLS {
             assert!(by_action(Action::SelectTool(tool)).is_some(), "{tool:?}");
         }
         assert_eq!(CATALOG.iter().filter(|c| c.category == Category::Filters).count(), 7);

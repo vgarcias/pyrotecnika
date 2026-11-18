@@ -2,12 +2,11 @@
 
 use eframe::egui;
 
-use pyro_core::document::Document;
-use pyro_core::filters::Filter;
 use pyro_core::selection::SelectMode;
 
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
+use crate::commands::catalog;
 use crate::design::fonts::title_style;
 use crate::design::style::{self, ThemeChoice};
 use crate::design::widgets;
@@ -18,51 +17,53 @@ impl PyroApp {
         let mut theme_pick = None;
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                let mut item = |ui: &mut egui::Ui, label: &str, shortcut: &str, a: Action, enabled: bool| {
-                    let button = egui::Button::new(label).shortcut_text(shortcut);
-                    if ui.add_enabled(enabled, button).clicked() {
-                        action = Some(a);
-                        ui.close_menu();
-                    }
-                };
                 ui.menu_button("Archivo", |ui| {
-                    item(ui, "Nuevo…", "Ctrl+N", Action::New, true);
-                    item(ui, "Abrir…", "Ctrl+O", Action::Open, true);
-                    item(ui, "Exportar…", "Ctrl+E", Action::Export, true);
+                    self.menu_items(ui, &mut action, &["file.new", "file.open"]);
+                    ui.menu_button("Abrir reciente", |ui| self.recent_menu(ui, &mut action));
+                    self.menu_items(ui, &mut action, &["file.export", "file.reveal"]);
                     ui.separator();
-                    item(ui, "Salir", "", Action::Quit, true);
+                    self.menu_items(ui, &mut action, &["file.quit"]);
                 });
-                let has_sel = self.doc.selection.is_some();
                 ui.menu_button("Editar", |ui| {
-                    item(ui, "Deshacer", "Ctrl+Z", Action::Undo, self.history.can_undo());
-                    item(ui, "Rehacer", "Ctrl+Y", Action::Redo, self.history.can_redo());
+                    self.menu_items(ui, &mut action, &["edit.undo", "edit.redo"]);
                     ui.separator();
-                    item(ui, "Borrar selección", "Supr", Action::ClearSelection, has_sel);
-                    item(ui, "Recortar a la selección", "", Action::CropToSelection, has_sel);
+                    self.menu_items(ui, &mut action, &["edit.clear", "edit.crop"]);
+                    ui.separator();
+                    self.menu_items(ui, &mut action, &["edit.palette", "edit.preferences"]);
                 });
                 ui.menu_button("Selección", |ui| {
-                    item(ui, "Seleccionar todo", "Ctrl+A", Action::SelectAll, true);
-                    item(ui, "Deseleccionar", "Ctrl+D", Action::Deselect, has_sel);
-                    item(ui, "Invertir selección", "Ctrl+Mayús+I", Action::InvertSelection, true);
+                    self.menu_items(ui, &mut action, &["select.all", "select.none", "select.invert"]);
+                });
+                ui.menu_button("Capas", |ui| {
+                    self.menu_items(ui, &mut action, &["layer.new", "layer.duplicate", "layer.delete"]);
+                    ui.separator();
+                    self.menu_items(ui, &mut action, &["layer.up", "layer.down"]);
+                    ui.separator();
+                    self.menu_items(ui, &mut action, &["layer.merge_down"]);
                 });
                 ui.menu_button("Filtros", |ui| {
                     ui.label("Ajustes");
-                    for f in [Filter::BRIGHTNESS_CONTRAST, Filter::HUE_SATURATION, Filter::LEVELS] {
-                        item(ui, &format!("{}…", f.name()), "", Action::Filter(f), true);
-                    }
-                    item(ui, "Invertir colores", "", Action::Filter(Filter::Invert), true);
-                    item(ui, "Escala de grises", "", Action::Filter(Filter::Grayscale), true);
+                    self.menu_items(
+                        ui,
+                        &mut action,
+                        &[
+                            "filter.brightness_contrast",
+                            "filter.hue_saturation",
+                            "filter.levels",
+                            "filter.invert",
+                            "filter.grayscale",
+                        ],
+                    );
                     ui.separator();
                     ui.label("Filtros");
-                    for f in [Filter::GAUSSIAN_BLUR, Filter::SHARPEN] {
-                        item(ui, &format!("{}…", f.name()), "", Action::Filter(f), true);
-                    }
+                    self.menu_items(ui, &mut action, &["filter.gaussian_blur", "filter.sharpen"]);
                 });
                 ui.menu_button("Ver", |ui| {
-                    item(ui, "Acercar", "Ctrl++", Action::ZoomIn, true);
-                    item(ui, "Alejar", "Ctrl+-", Action::ZoomOut, true);
-                    item(ui, "Ajustar a la ventana", "Ctrl+0", Action::Fit, true);
-                    item(ui, "Tamaño real", "Ctrl+1", Action::ActualSize, true);
+                    self.menu_items(
+                        ui,
+                        &mut action,
+                        &["view.zoom_in", "view.zoom_out", "view.fit", "view.actual_size"],
+                    );
                     ui.separator();
                     ui.menu_button("Tema", |ui| {
                         for (label, choice) in [
@@ -78,15 +79,15 @@ impl PyroApp {
                         }
                     });
                     ui.menu_button("Tamaño de la interfaz", |ui| {
-                        item(ui, "Aumentar", "", Action::UiScaleUp, self.ui_scale < 2.0);
-                        item(ui, "Reducir", "", Action::UiScaleDown, self.ui_scale > 0.8);
-                        item(ui, "Restablecer (100 %)", "", Action::UiScaleReset, self.ui_scale != 1.0);
+                        self.menu_item(ui, &mut action, "view.ui_scale_up", Some("Aumentar"));
+                        self.menu_item(ui, &mut action, "view.ui_scale_down", Some("Reducir"));
+                        self.menu_item(ui, &mut action, "view.ui_scale_reset", Some("Restablecer (100 %)"));
                         ui.separator();
                         ui.weak(format!("Actual: {:.0} %", self.ui_scale * 100.0));
                     });
                 });
                 ui.menu_button("Ayuda", |ui| {
-                    item(ui, "Buscar actualizaciones…", "", Action::CheckUpdates, true);
+                    self.menu_items(ui, &mut action, &["help.updates"]);
                     ui.separator();
                     ui.weak(format!("Pyrotecnika {}", updates::VERSION));
                 });
@@ -98,6 +99,39 @@ impl PyroApp {
         if let Some(a) = action {
             self.run(a, ctx);
         }
+    }
+
+    /// Entrada de menú de un comando del catálogo: su nombre (o `label`), su
+    /// atajo vigente y deshabilitada si no tiene sentido ahora.
+    fn menu_item(&self, ui: &mut egui::Ui, action: &mut Option<Action>, id: &str, label: Option<&str>) {
+        let Some(def) = catalog::find(id) else { return };
+        let button = egui::Button::new(label.unwrap_or(def.name)).shortcut_text(self.menu_shortcut(id));
+        if ui.add_enabled(self.available(def.action), button).clicked() {
+            *action = Some(def.action);
+            ui.close_menu();
+        }
+    }
+
+    fn menu_items(&self, ui: &mut egui::Ui, action: &mut Option<Action>, ids: &[&str]) {
+        for id in ids {
+            self.menu_item(ui, action, id, None);
+        }
+    }
+
+    /// Archivo › Abrir reciente: nombre del archivo, ruta completa en el
+    /// tooltip y «Limpiar lista» al final.
+    fn recent_menu(&self, ui: &mut egui::Ui, action: &mut Option<Action>) {
+        if self.settings.recent.files.is_empty() {
+            ui.weak("Sin archivos recientes");
+        }
+        for (i, path) in self.settings.recent.files.iter().enumerate() {
+            if ui.button(guard::short_name(path)).on_hover_text(path.display().to_string()).clicked() {
+                *action = Some(Action::OpenRecent(i));
+                ui.close_menu();
+            }
+        }
+        ui.separator();
+        self.menu_item(ui, action, "file.clear_recent", Some("Limpiar lista"));
     }
 
     pub(super) fn status_bar(&mut self, ctx: &egui::Context) {
@@ -169,7 +203,9 @@ impl PyroApp {
     /// tooltip; el nombre accesible es solo el nombre.
     fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
         let selected = self.tool == tool;
-        if widgets::tool_button(ui, tool.icon(), selected, tool.label(), tool.shortcut()).clicked() {
+        let shortcut =
+            catalog::by_action(Action::SelectTool(tool)).map(|d| self.menu_shortcut(d.id)).unwrap_or_default();
+        if widgets::tool_button(ui, tool.icon(), selected, tool.label(), &shortcut).clicked() {
             self.tool = tool;
         }
     }
@@ -264,37 +300,30 @@ impl PyroApp {
     pub(super) fn layers_ui(&mut self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("Capas").text_style(title_style()));
         let locked = self.filter_dialog.is_some();
-        let mut op: Option<fn(&mut Document) -> bool> = None;
+        let mut clicked = None;
         ui.add_enabled_ui(!locked, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if widgets::button(ui, "Nueva").clicked() {
-                    op = Some(|d| {
-                        d.add_layer();
-                        true
-                    });
-                }
-                if widgets::button(ui, "Duplicar").clicked() {
-                    op = Some(|d| {
-                        d.duplicate_layer();
-                        true
-                    });
-                }
-                if widgets::button(ui, "Eliminar").clicked() {
-                    op = Some(Document::delete_layer);
-                }
-                if widgets::button(ui, "Subir").clicked() {
-                    op = Some(Document::move_layer_up);
-                }
-                if widgets::button(ui, "Bajar").clicked() {
-                    op = Some(Document::move_layer_down);
-                }
-                if widgets::button(ui, "Combinar abajo").clicked() {
-                    op = Some(Document::merge_down);
+                for (label, id) in [
+                    ("Nueva", "layer.new"),
+                    ("Duplicar", "layer.duplicate"),
+                    ("Eliminar", "layer.delete"),
+                    ("Subir", "layer.up"),
+                    ("Bajar", "layer.down"),
+                    ("Combinar abajo", "layer.merge_down"),
+                ] {
+                    let Some(def) = catalog::find(id) else { continue };
+                    let shortcut = self.menu_shortcut(id);
+                    let tip =
+                        if shortcut.is_empty() { def.name.to_string() } else { format!("{} · {shortcut}", def.name) };
+                    if widgets::button(ui, label).on_hover_text(tip).clicked() {
+                        clicked = Some(def.action);
+                    }
                 }
             });
         });
-        if let Some(f) = op {
-            self.layer_op(f);
+        if let Some(action) = clicked {
+            let ctx = ui.ctx().clone();
+            self.run(action, &ctx);
         }
 
         let mut toggle = None;

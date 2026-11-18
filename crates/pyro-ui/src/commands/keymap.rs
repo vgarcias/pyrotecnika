@@ -70,6 +70,7 @@ impl Keymap {
     }
 
     /// Otro comando que ya usa `c` (salvo herramientas que comparten tecla).
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn conflict(&self, id: &str, c: Chord) -> Option<&'static str> {
         let me = index(id)?;
         (0..CATALOG.len())
@@ -90,6 +91,7 @@ impl Keymap {
         }
     }
 
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn remove(&mut self, id: &str, c: Chord) {
         if let Some(i) = index(id) {
             self.bindings[i].retain(|x| *x != c);
@@ -97,6 +99,7 @@ impl Keymap {
     }
 
     /// Vuelve a los atajos de fábrica del comando, quitándoselos a otros.
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn reset(&mut self, id: &str) {
         let Some(i) = index(id) else { return };
         self.bindings[i].clear();
@@ -105,6 +108,7 @@ impl Keymap {
         }
     }
 
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn is_default(&self, id: &str) -> bool {
         index(id).is_some_and(|i| self.bindings[i] == defaults(i))
     }
@@ -123,6 +127,7 @@ impl Keymap {
         Some(CATALOG[first].action)
     }
 
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn to_file(&self) -> KeymapFile {
         let bindings = (0..CATALOG.len())
             .filter(|&i| self.bindings[i] != defaults(i))

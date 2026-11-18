@@ -73,7 +73,7 @@ fn sample_document() -> Document {
 
 /// La app en una escena fija, con el tema y la escala de interfaz dados.
 pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Vec2) -> Harness<'static, PyroApp> {
-    let mut harness = Harness::builder().with_size(size).build_eframe(|cc| PyroApp::new(cc));
+    let mut harness = Harness::builder().with_size(size).build_eframe(|cc| PyroApp::with_config(cc, None));
     let ctx = harness.ctx.clone();
     {
         let app = harness.state_mut();

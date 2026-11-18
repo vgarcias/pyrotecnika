@@ -177,6 +177,7 @@ impl Store {
         Ok(())
     }
 
+    #[allow(dead_code)] // Temporal: lo usa el editor de atajos (tarea 8).
     pub(crate) fn save_keymap(&mut self, k: &Keymap) -> Result<(), String> {
         let text = toml::to_string_pretty(&k.to_file()).map_err(|e| e.to_string())?;
         self.write("keymap.toml", &text, self.keymap_newer)?;

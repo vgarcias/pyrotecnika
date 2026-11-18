@@ -3,6 +3,8 @@
 //! Cada submódulo añade métodos a [`PyroApp`] para un área de la interfaz.
 
 mod canvas;
+#[cfg(test)]
+mod commands_tests;
 mod dialogs;
 mod guard;
 pub(crate) mod icons;
@@ -31,6 +33,11 @@ use guard::{Pending, Status, Tone};
 use tools::{Drag, Tool};
 use updates::UpdateState;
 
+use crate::commands::{
+    self,
+    keymap::Keymap,
+    store::{Settings, Store},
+};
 use crate::design::style::{apply_theme, step_scale, ThemeChoice};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -67,7 +74,6 @@ pub(crate) enum Action {
     BrushBigger,
     OpenPalette,
     OpenPreferences,
-    #[allow(dead_code)] // Temporal: el menú de recientes llega en la tarea 5.
     OpenRecent(usize),
     ClearRecent,
     RevealInFolder,
@@ -115,17 +121,36 @@ pub struct PyroApp {
     title: String,
     /// Búsqueda o instalación de actualizaciones en curso (ventana abierta).
     update: Option<UpdateState>,
-    /// Ver › Tema y Ver › Tamaño de la interfaz (no se guardan hasta la fase 2).
+    /// Ver › Tema y Ver › Tamaño de la interfaz (se guardan en `settings`).
     theme: ThemeChoice,
     ui_scale: f32,
+    /// Atajos vigentes (fábrica de Fireworks más lo que cambió el usuario).
+    keymap: Keymap,
+    /// Preferencias y recientes tal como se guardan en `settings.toml`.
+    settings: Settings,
+    store: Store,
+    /// Ya se avisó de que no se pudo guardar la configuración.
+    save_warned: bool,
 }
 
 impl PyroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::with_config(cc, pyro_platform::paths::config_dir())
+    }
+
+    /// La app con la configuración de `dir` (`None`: no se lee ni se guarda
+    /// nada, como en las pruebas).
+    pub(crate) fn with_config(cc: &eframe::CreationContext<'_>, dir: Option<PathBuf>) -> Self {
         crate::design::style::install(&cc.egui_ctx);
         let ctx = cc.egui_ctx.clone();
         pyro_platform::open_files::set_waker(move || ctx.request_repaint());
-        Self {
+        let mut store = Store::new(dir);
+        let (settings, mut warns) = store.load_settings();
+        let (keymap, more) = store.load_keymap();
+        warns.extend(more);
+        apply_theme(&cc.egui_ctx, settings.appearance.theme);
+        cc.egui_ctx.set_zoom_factor(settings.appearance.ui_scale);
+        let mut app = Self {
             doc: Document::new(800, 600, Some([255, 255, 255, 255])),
             history: History::default(),
             tool: Tool::Brush,
@@ -161,8 +186,59 @@ impl PyroApp {
             closing: false,
             title: String::new(),
             update: None,
-            theme: ThemeChoice::System,
-            ui_scale: 1.0,
+            theme: settings.appearance.theme,
+            ui_scale: settings.appearance.ui_scale,
+            keymap,
+            settings,
+            store,
+            save_warned: false,
+        };
+        if !warns.is_empty() {
+            app.warn(warns.join(" "));
+        }
+        app
+    }
+
+    /// Guarda tema, escala y recientes. Si falla, avisa una sola vez.
+    pub(super) fn save_settings(&mut self) {
+        self.settings.appearance.theme = self.theme;
+        self.settings.appearance.ui_scale = self.ui_scale;
+        if let Err(e) = self.store.save_settings(&self.settings) {
+            self.warn_save_failed(e);
+        }
+    }
+
+    pub(super) fn warn_save_failed(&mut self, e: String) {
+        if !self.save_warned {
+            self.save_warned = true;
+            self.warn(format!("{e}. Los cambios valen hasta cerrar Pyrotecnika."));
+        }
+    }
+
+    /// Texto del atajo vigente de un comando, tal como lo muestran los menús.
+    pub(super) fn menu_shortcut(&self, id: &str) -> String {
+        self.keymap.label(id, commands::is_mac())
+    }
+
+    /// Si la acción tiene sentido ahora (menús y paleta la deshabilitan si no).
+    pub(super) fn available(&self, action: Action) -> bool {
+        let layers = self.doc.layers.len();
+        let active = self.doc.active;
+        match action {
+            Action::Undo => self.history.can_undo(),
+            Action::Redo => self.history.can_redo(),
+            Action::Deselect | Action::ClearSelection | Action::CropToSelection => self.doc.selection.is_some(),
+            Action::UiScaleUp => self.ui_scale < 2.0,
+            Action::UiScaleDown => self.ui_scale > 0.8,
+            Action::UiScaleReset => self.ui_scale != 1.0,
+            Action::LayerDelete => layers > 1,
+            Action::LayerUp => active + 1 < layers,
+            Action::LayerDown | Action::LayerMergeDown => active > 0,
+            Action::ClearRecent => !self.settings.recent.files.is_empty(),
+            Action::OpenRecent(i) => i < self.settings.recent.files.len(),
+            // Llegan en las tareas 6 a 8 del plan de la fase 2.
+            Action::RevealInFolder | Action::OpenPalette | Action::OpenPreferences => false,
+            _ => true,
         }
     }
 
@@ -194,6 +270,8 @@ impl PyroApp {
                 self.info(message);
                 self.reset_document(doc);
                 self.png_info = opened.png_info;
+                self.settings.recent.push(path.clone());
+                self.save_settings();
                 self.source_path = Some(path);
             }
             Err(e) => {
@@ -344,6 +422,7 @@ impl PyroApp {
             Action::SetTheme(choice) => {
                 self.theme = choice;
                 apply_theme(ctx, choice);
+                self.save_settings();
             }
             Action::UiScaleUp | Action::UiScaleDown | Action::UiScaleReset => {
                 self.ui_scale = match action {
@@ -352,6 +431,7 @@ impl PyroApp {
                     _ => 1.0,
                 };
                 ctx.set_zoom_factor(self.ui_scale);
+                self.save_settings();
             }
             Action::LayerNew => self.layer_op(|d| {
                 d.add_layer();
@@ -368,11 +448,22 @@ impl PyroApp {
             Action::SelectTool(tool) => self.tool = tool,
             Action::BrushSmaller => self.brush.radius = (self.brush.radius - 2.0).clamp(0.5, 250.0),
             Action::BrushBigger => self.brush.radius = (self.brush.radius + 2.0).clamp(0.5, 250.0),
-            Action::OpenPalette
-            | Action::OpenPreferences
-            | Action::OpenRecent(_)
-            | Action::ClearRecent
-            | Action::RevealInFolder => todo!("fase 2, tareas 5 a 8"),
+            Action::OpenRecent(i) => {
+                let Some(path) = self.settings.recent.files.get(i).cloned() else { return };
+                if path.exists() {
+                    self.request(Pending::Open(path), ctx);
+                } else {
+                    self.warn(format!("Ya no existe «{}»; se quitó de recientes.", guard::short_name(&path)));
+                    self.settings.recent.remove(&path);
+                    self.save_settings();
+                }
+            }
+            Action::ClearRecent => {
+                self.settings.recent.clear();
+                self.save_settings();
+            }
+            // Llegan en las tareas 6 a 8 del plan de la fase 2.
+            Action::OpenPalette | Action::OpenPreferences | Action::RevealInFolder => {}
         }
     }
 

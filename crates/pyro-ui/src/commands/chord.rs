@@ -1,6 +1,6 @@
 //! Una combinación de teclas: modificadores más una tecla de egui.
 
-use eframe::egui::{InputState, Key, Modifiers};
+use eframe::egui::Key;
 
 /// Modificadores más una tecla. `ctrl` es la tecla de comando de cada SO
 /// (Ctrl en Windows y Linux, ⌘ en macOS).
@@ -65,28 +65,9 @@ impl Chord {
         }
     }
 
-    pub(crate) fn modifiers(self) -> Modifiers {
-        let mut m = Modifiers::NONE;
-        if self.ctrl {
-            m |= Modifiers::COMMAND;
-        }
-        if self.alt {
-            m |= Modifiers::ALT;
-        }
-        if self.shift {
-            m |= Modifiers::SHIFT;
-        }
-        m
-    }
-
     /// Tiene algún modificador; Mayús cuenta.
     pub(crate) fn has_modifier(self) -> bool {
         self.ctrl || self.alt || self.shift
-    }
-
-    /// La tecla se pulsó en este cuadro con exactamente estos modificadores.
-    pub(crate) fn pressed(self, i: &InputState) -> bool {
-        i.key_pressed(self.key) && i.modifiers.matches_exact(self.modifiers())
     }
 }
 

@@ -1,6 +1,6 @@
 //! Herramientas del lienzo: selección, pintura, relleno y cuentagotas.
 
-use eframe::egui::{self, Key, Modifiers};
+use eframe::egui::{self, Modifiers};
 use image::RgbaImage;
 
 use pyro_core::document::shift_pixels;
@@ -24,18 +24,18 @@ pub(crate) enum Tool {
     Eyedropper,
 }
 
-pub(crate) const TOOLS: [(Tool, &str, Key); 11] = [
-    (Tool::Move, "Mover", Key::V),
-    (Tool::Marquee, "Marco", Key::M),
-    (Tool::Ellipse, "Elipse", Key::U),
-    (Tool::Lasso, "Lazo", Key::L),
-    (Tool::Wand, "Varita mágica", Key::W),
-    (Tool::Brush, "Pincel", Key::B),
-    (Tool::Eraser, "Borrador", Key::E),
-    (Tool::Clone, "Tampón de clonar", Key::S),
-    (Tool::Blur, "Desenfocar", Key::R),
-    (Tool::Bucket, "Bote de pintura", Key::G),
-    (Tool::Eyedropper, "Cuentagotas", Key::I),
+pub(crate) const TOOLS: [(Tool, &str); 11] = [
+    (Tool::Move, "Mover"),
+    (Tool::Marquee, "Marco"),
+    (Tool::Ellipse, "Elipse"),
+    (Tool::Lasso, "Lazo"),
+    (Tool::Wand, "Varita mágica"),
+    (Tool::Brush, "Pincel"),
+    (Tool::Eraser, "Borrador"),
+    (Tool::Clone, "Tampón de clonar"),
+    (Tool::Blur, "Desenfocar"),
+    (Tool::Bucket, "Bote de pintura"),
+    (Tool::Eyedropper, "Cuentagotas"),
 ];
 
 impl Tool {
@@ -80,12 +80,7 @@ impl Tool {
 
     /// Nombre de la herramienta, sin atajo (es también su nombre accesible).
     pub(super) fn label(self) -> &'static str {
-        TOOLS.iter().find(|(t, _, _)| *t == self).map_or("", |(_, l, _)| l)
-    }
-
-    /// Tecla de la herramienta, para el tooltip («Pincel · B»).
-    pub(super) fn shortcut(self) -> &'static str {
-        TOOLS.iter().find(|(t, _, _)| *t == self).map_or("", |(_, _, k)| k.name())
+        TOOLS.iter().find(|(t, _)| *t == self).map_or("", |(_, l)| l)
     }
 }
 
@@ -293,7 +288,6 @@ mod tests {
     #[test]
     fn nombre_y_atajo_separados() {
         assert_eq!(Tool::Brush.label(), "Pincel");
-        assert_eq!(Tool::Brush.shortcut(), "B");
-        assert!(TOOLS.iter().all(|(_, l, _)| !l.contains('(')));
+        assert!(TOOLS.iter().all(|(_, l)| !l.contains('(')));
     }
 }
