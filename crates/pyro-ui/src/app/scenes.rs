@@ -27,11 +27,25 @@ pub(super) enum Scene {
     Confirm,
     Updates,
     LongNames,
+    /// Paleta de comandos con «gaus» escrito.
+    Palette,
+    /// Preferencias › Atajos con «Exportar…» elegido y el aviso de conflicto.
+    Prefs,
+    /// Preferencias › Apariencia (solo se captura en oscuro).
+    PrefsAppearance,
 }
 
 impl Scene {
-    pub(super) const ALL: [Scene; 6] =
-        [Scene::Main, Scene::Export, Scene::Filter, Scene::Confirm, Scene::Updates, Scene::LongNames];
+    pub(super) const ALL: [Scene; 8] = [
+        Scene::Main,
+        Scene::Export,
+        Scene::Filter,
+        Scene::Confirm,
+        Scene::Updates,
+        Scene::LongNames,
+        Scene::Palette,
+        Scene::Prefs,
+    ];
 
     pub(super) fn name(self) -> &'static str {
         match self {
@@ -41,6 +55,9 @@ impl Scene {
             Scene::Confirm => "confirmar",
             Scene::Updates => "actualizaciones",
             Scene::LongNames => "nombres-largos",
+            Scene::Palette => "paleta",
+            Scene::Prefs => "preferencias-atajos",
+            Scene::PrefsAppearance => "preferencias-apariencia",
         }
     }
 }
@@ -105,6 +122,16 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
                 "La capa «Fondo con la textura de piedra caliza del cenote, copia 2» está oculta. Muéstrala para editarla.",
             );
         }
+        Scene::Palette => app.palette = Some(super::palette::Palette::with_query("gaus")),
+        Scene::Prefs => {
+            let mut prefs = super::prefs::PrefsDialog::new();
+            prefs.section = super::prefs::Section::Shortcuts;
+            prefs.selected = Some("file.export");
+            let chord = crate::commands::chord::Chord::parse("Ctrl+K").expect("combinación válida");
+            prefs.pending = Some(("file.export", chord));
+            app.prefs = Some(prefs);
+        }
+        Scene::PrefsAppearance => app.prefs = Some(super::prefs::PrefsDialog::new()),
     }
     harness.run_steps(4);
     // La exportación codifica en otro hilo: se espera a que termine para
@@ -128,7 +155,7 @@ mod tests {
     #[test]
     fn todas_las_escenas_se_dibujan() {
         for theme in [ThemeChoice::Dark, ThemeChoice::Light, ThemeChoice::HighContrast] {
-            for s in Scene::ALL {
+            for s in Scene::ALL.into_iter().chain([Scene::PrefsAppearance]) {
                 let mut h = scene(s, theme, 1.0, egui::vec2(1280.0, 800.0));
                 h.run_steps(4);
             }
@@ -153,6 +180,7 @@ mod tests {
             }
         }
         cases.push((Scene::Main, ThemeChoice::Dark, "oscuro", 1.5));
+        cases.push((Scene::PrefsAppearance, ThemeChoice::Dark, "oscuro", 1.0));
         for (s, theme, tag, scale) in cases {
             let mut h = scene(s, theme, scale, egui::vec2(1280.0, 800.0));
             let suffix = if scale == 1.0 { String::new() } else { format!("-{:.0}", scale * 100.0) };

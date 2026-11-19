@@ -98,8 +98,9 @@ Las capas se guardan como teselas de 256×256 en `Arc<Tile>`. Un paso de deshace
 | Necesidad | Solución | Ubicación |
 |---|---|---|
 | Preferencias | `serde` + TOML con versión de esquema y migraciones | `config_dir()/settings.toml` |
-| Atajos personalizados | TOML (`keymap.toml`), se valida al cargar y se detectan conflictos | `config_dir()` |
-| Recientes, presets de exportación y de pinceles | SQLite (`rusqlite` embebido, sin servidor) | `data_dir()/library.db` |
+| Atajos personalizados | TOML (`keymap.toml`, solo las diferencias con los de fábrica de Fireworks CS6), se valida al cargar y se detectan conflictos | `config_dir()` |
+| Archivos recientes | TOML (sección `[recent]` de `settings.toml`), máximo 10 | `config_dir()/settings.toml` |
+| Presets de exportación y de pinceles (futuro) | SQLite (`rusqlite` embebido) cuando existan; pospuesto en la fase 2 porque para 10 rutas no compensa el código C | `data_dir()/library.db` |
 | Recuperación y logs | Archivos | `cache_dir()` / `data_local_dir()` |
 | REST | `ureq` + `rustls`, **solo HTTPS**, *timeouts*, *user-agent* genérico | `pyro-services::net` |
 
@@ -153,10 +154,10 @@ Se descartan Tauri y Electron por los criterios con más peso. Flutter y Qt obli
 | Portapapeles (incluye imágenes) | `arboard` | |
 | Notificaciones | `notify-rust` (Linux/macOS), `winrt-notification` (Windows) | |
 | Llavero | `keyring` | Credential Manager, Keychain, Secret Service |
-| Rutas | `directories` | |
-| Abrir y "mostrar en carpeta" | `opener` | |
+| Rutas | propias, en `pyro-platform::paths` (`APPDATA`, `HOME`, `XDG_CONFIG_HOME`); `directories` arrastra `option-ext` (MPL-2.0) | |
+| "Mostrar en carpeta" | `pyro-platform::reveal`: `explorer /select`, `open -R`, `FileManager1` por D-Bus o `xdg-open` | |
 | Preferencias | `serde`, `toml` | |
-| Base de datos | `rusqlite` (feature `bundled`) | |
+| Base de datos | `rusqlite` (feature `bundled`), cuando haya presets | |
 | HTTP | `ureq` + `rustls` | Sin OpenSSL, la misma pila TLS en los 3 SO |
 | Logs | `tracing`, `tracing-appender` | |
 | Errores | `thiserror`, `anyhow` | |
@@ -308,10 +309,10 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RF-10 | Deshacer/rehacer por teselas y panel de historial | ◐ |
 | RF-11 | Portapapeles: copiar y pegar la selección o la imagen como píxeles con otras apps; pegar como nueva capa o nuevo documento | ○ |
 | RF-12 | Arrastrar y soltar archivos al lienzo (abrir) o al panel de capas (añadir como capa); arrastrar hacia fuera para exportar | ◐ (solo abrir) |
-| RF-13 | Atajos de teclado configurables, con detección de conflictos e importación/exportación | ○ |
-| RF-14 | Paleta de comandos (Ctrl/⌘+K) con búsqueda de cualquier acción | ○ |
-| RF-15 | Archivos recientes (persistentes, se pueden limpiar) y "Mostrar en carpeta" | ○ |
-| RF-16 | Preferencias: tema, escala de UI, idioma, reducir movimiento, memoria del historial, autoguardado, actualizaciones | ○ |
+| RF-13 | Atajos de teclado configurables, con detección de conflictos e importación/exportación (de fábrica, los de Fireworks CS6: `docs/ATAJOS.md`) | ✔ |
+| RF-14 | Paleta de comandos (Ctrl/⌘+K) con búsqueda de cualquier acción | ✔ |
+| RF-15 | Archivos recientes (persistentes, se pueden limpiar) y "Mostrar en carpeta" | ✔ |
+| RF-16 | Preferencias: tema, escala de UI, idioma, reducir movimiento, memoria del historial, autoguardado, actualizaciones | ◐ (tema, escala y atajos en la fase 2; memoria del historial llega en la 3, autoguardado en la 4, idioma y reducir movimiento en la 7; la búsqueda de actualizaciones es solo manual y no necesita opción) |
 | RF-17 | Notificación nativa al terminar una exportación o un lote largo **solo si la ventana no tiene foco** | ○ |
 | RF-18 | Comprobación de actualizaciones (manual o automática, desactivable) e instalación firmada | ○ |
 | RF-19 | Asociación de archivos (`.ora`, opcionalmente `.png`) y abrir desde el gestor de archivos o "Abrir con" | ◐ (solo argumento de línea de comandos en Windows) |
@@ -465,7 +466,7 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 |---|---|---|
 | **0. Cimientos** ✔ | Workspace en crates; `app.rs` partido en módulos; backend wgpu; CI en los 3 SO; licencias; `cargo-deny`; prueba de concepto de abrir archivos en macOS | Verificado en los tres SO en el CI de GitHub (jobs `test` y `macos-open-files`) |
 | **1. Sistema de diseño** ✔ | Tokens neutros, temas claro/oscuro/alto contraste, Inter y JetBrains Mono, iconos, estados por inversión, escala de UI | Snapshots de referencia aprobados por el autor (2026-11-16; `crates/pyro-ui/tests/snapshots/`) |
-| **2. Comandos y preferencias** | Registro de comandos, atajos configurables, paleta, settings TOML, recientes en SQLite | RF-13 a RF-16 |
+| **2. Comandos y preferencias** ✔ | Catálogo de comandos, atajos de Fireworks configurables, paleta Ctrl+K, preferencias y recientes en TOML, Mostrar en carpeta | RF-13 a RF-15, y RF-16 en lo que ya existe (spec `docs/superpowers/specs/2026-11-17-fase2-comandos-preferencias-design.md`) |
 | **3. No bloqueo y memoria** | Jobs con progreso y cancelación, historial por teselas, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos |
 | **4. Formato nativo y recuperación** | `.ora`, autoguardado, panic hook, pestañas | RF-08 a RF-10, RF-20 |
 | **5. Integración de escritorio** | Portapapeles de imagen, arrastrar y soltar completo, notificaciones, menú macOS, asociación de archivos, instancia única | RF-11, 12, 17, 19 |

@@ -195,7 +195,7 @@ Estados de los widgets de egui (`Visuals::widgets`), en los tres temas:
 | Seleccionado / principal | `active` | `active` | `on_active` |
 | Foco de teclado | anillo de 2 px en `focus_ring`, 3 px fuera del widget, radio 6 | | |
 
-Sin expansión al hover. Texto seleccionado en campos: `active` al 35 % con trazo `on_active`. Cursor de texto: 2 px `text_primary`. Deslizadores con relleno del tramo recorrido (`slider_trailing_fill`), porque el riel vacío no se ve sobre el fondo de las ventanas.
+Sin expansión al hover. Texto seleccionado en campos: `active` al 25 % con trazo `focus_ring`. Cursor de texto: 2 px `text_primary`. Deslizadores con relleno del tramo recorrido (`slider_trailing_fill`), porque el riel vacío no se ve sobre el fondo de las ventanas.
 
 Widgets propios (`design/widgets.rs`):
 
@@ -205,6 +205,8 @@ Widgets propios (`design/widgets.rs`):
 - **`active_row`**: fila de ancho completo, 24 de alto, texto con sangría de 8; invertida si es la capa activa, `bg_hover` al pasar el puntero. Recorta con «…» y entonces muestra el nombre completo en el tooltip.
 - **Anillo de foco** (`paint_focus_ring`): una pasada al final de cada cuadro pinta 2 px en `focus_ring`, 3 px fuera del widget con foco (propio o de egui), en la capa de ese widget y recortado a su zona visible. Los campos de texto con foco llevan además borde en `focus_ring` (`selection.stroke`).
 - **Selección de egui**: relleno `active` al 25 % y texto en `focus_ring`; texto encima ≥ 4.5:1 en los tres temas (prueba `la_seleccion_se_lee_y_el_campo_con_foco_tiene_borde`).
+- **Paleta de comandos** (`app/palette.rs`): ventana modal de 520 de ancho anclada arriba al 15 % del alto, con campo de búsqueda y filas de 24: nombre a la izquierda, categoría y atajo en monoespaciada a la derecha. La fila elegida va invertida; las no disponibles, en `text_disabled` y sin poder elegirse.
+- **Preferencias** (`app/prefs.rs`, `app/shortcuts.rs`): ventana modal de 640 con pestañas «Apariencia» y «Atajos» hechas con `active_row`. En Atajos, la lista agrupa por categoría con el atajo en monoespaciada («—» si no tiene); lo cambiado lleva «(modificado)» tras el nombre. El aviso de conflicto es texto con «⚠» y los botones Reasignar (principal) y Cancelar. «Cerrar» es el botón principal de la ventana.
 - **Avisos** (`app/guard.rs`): icono de severidad del tamaño del texto `Body` más texto semibold, en la barra de estado o en el diálogo; una línea recortada con el texto completo en tooltip.
 
 Iconografía: Lucide como fuente tipográfica (no SVG), coloreada con los tokens de texto; todo icono tiene tooltip y nombre accesible.

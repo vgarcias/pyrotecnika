@@ -124,6 +124,29 @@ pub(crate) fn find(id: &str) -> Option<&'static CommandDef> {
     CATALOG.iter().find(|c| c.id == id)
 }
 
+/// Tabla de atajos de fábrica para `docs/ATAJOS.md` (etiquetas de Windows y
+/// Linux; en macOS Ctrl es ⌘).
+#[cfg(test)]
+pub(crate) fn shortcuts_markdown() -> String {
+    use super::chord::Chord;
+    let mut out = String::from(
+        "# Atajos de teclado de fábrica\n\n\
+         Son los de Adobe Fireworks CS6 para las acciones que existen en Pyrotecnika. Se cambian en \
+         Editar › Preferencias… › Atajos. En macOS, Ctrl es ⌘ y Alt es ⌥.\n\n\
+         Este archivo se genera desde el catálogo de comandos \
+         (`crates/pyro-ui/src/commands/catalog.rs`): \
+         `PYRO_WRITE_ATAJOS=1 cargo test -p pyro-ui tabla_de_atajos`.\n\n\
+         | Categoría | Comando | Atajo |\n|---|---|---|\n",
+    );
+    for c in CATALOG {
+        let keys: Vec<String> =
+            c.defaults.iter().filter_map(|d| Chord::parse(d).ok()).map(|k| k.label(false)).collect();
+        let keys = if keys.is_empty() { "—".to_string() } else { keys.join(", ") };
+        out.push_str(&format!("| {} | {} | {} |\n", c.category.label(), c.name, keys.replace('|', "\\|")));
+    }
+    out
+}
+
 pub(crate) fn by_action(action: Action) -> Option<&'static CommandDef> {
     CATALOG.iter().find(|c| c.action == action)
 }
@@ -197,5 +220,22 @@ mod tests {
             assert!(by_action(Action::SelectTool(tool)).is_some(), "{tool:?}");
         }
         assert_eq!(CATALOG.iter().filter(|c| c.category == Category::Filters).count(), 7);
+    }
+
+    /// `docs/ATAJOS.md` es la tabla del catálogo: si alguien cambia un atajo
+    /// de fábrica, la documentación tiene que cambiar con él.
+    #[test]
+    fn tabla_de_atajos_al_dia() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/ATAJOS.md");
+        let want = shortcuts_markdown();
+        if std::env::var_os("PYRO_WRITE_ATAJOS").is_some() {
+            std::fs::write(&path, &want).unwrap();
+        }
+        let have = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+        assert!(
+            have == want,
+            "docs/ATAJOS.md no coincide con el catálogo; regenéralo con \
+             PYRO_WRITE_ATAJOS=1 cargo test -p pyro-ui tabla_de_atajos"
+        );
     }
 }

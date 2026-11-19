@@ -18,6 +18,12 @@ impl Palette {
     pub(super) fn new() -> Palette {
         Palette { query: String::new(), selected: 0, focused: false }
     }
+
+    /// Paleta abierta con una búsqueda ya escrita (escenas de prueba).
+    #[cfg(test)]
+    pub(super) fn with_query(query: &str) -> Palette {
+        Palette { query: query.into(), ..Palette::new() }
+    }
 }
 
 /// Una fila de la paleta.
