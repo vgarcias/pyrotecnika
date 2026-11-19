@@ -1,16 +1,35 @@
 //! Documento con capas de bitmap del mismo tamaño que el lienzo.
 //! La capa 0 es la del fondo (la más baja).
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use image::{imageops, Rgba, RgbaImage};
+use rayon::prelude::*;
 
 use crate::selection::Mask;
 
+/// Identidad estable de una capa: la conservan las copias del documento
+/// (instantáneas, historial) y cambia al duplicarla.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct LayerId(pub u64);
+
+impl LayerId {
+    fn fresh() -> LayerId {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        LayerId(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// Capa de bitmap. Los píxeles se comparten entre copias del documento y se
+/// copian solo al escribir ([`Layer::image_mut`]).
 #[derive(Clone, Debug)]
 pub struct Layer {
+    pub id: LayerId,
     pub name: String,
     pub visible: bool,
     pub opacity: f32,
-    pub pixels: RgbaImage,
+    pub pixels: Arc<RgbaImage>,
 }
 
 impl Layer {
@@ -19,7 +38,12 @@ impl Layer {
     }
 
     pub fn from_image(name: impl Into<String>, pixels: RgbaImage) -> Self {
-        Self { name: name.into(), visible: true, opacity: 1.0, pixels }
+        Self { id: LayerId::fresh(), name: name.into(), visible: true, opacity: 1.0, pixels: Arc::new(pixels) }
+    }
+
+    /// Píxeles para escribir; si otra copia los comparte, se copian antes.
+    pub fn image_mut(&mut self) -> &mut RgbaImage {
+        Arc::make_mut(&mut self.pixels)
     }
 }
 
@@ -73,7 +97,7 @@ impl Document {
     pub fn new(width: u32, height: u32, background: Option<[u8; 4]>) -> Self {
         let mut layer = Layer::new("Fondo", width, height);
         if let Some(c) = background {
-            for p in layer.pixels.pixels_mut() {
+            for p in layer.image_mut().pixels_mut() {
                 *p = Rgba(c);
             }
         }
@@ -87,13 +111,49 @@ impl Document {
 
     /// Imagen final con todas las capas visibles.
     pub fn composite(&self) -> RgbaImage {
-        let mut out = RgbaImage::new(self.width, self.height);
-        for layer in self.layers.iter().filter(|l| l.visible && l.opacity > 0.0) {
-            for (d, s) in out.pixels_mut().zip(layer.pixels.pixels()) {
-                d.0 = blend_over(d.0, s.0, layer.opacity);
-            }
+        self.composite_rect(0, 0, self.width, self.height)
+    }
+
+    /// Imagen final del rectángulo `x0..x1` × `y0..y1` (recortado al
+    /// lienzo), compuesta en paralelo por filas.
+    pub fn composite_rect(&self, x0: u32, y0: u32, x1: u32, y1: u32) -> RgbaImage {
+        let (x1, y1) = (x1.min(self.width), y1.min(self.height));
+        let (x0, y0) = (x0.min(x1), y0.min(y1));
+        let (w, h) = (x1 - x0, y1 - y0);
+        let mut out = RgbaImage::new(w, h);
+        if w == 0 || h == 0 {
+            return out;
         }
+        let layers: Vec<&Layer> = self.layers.iter().filter(|l| l.visible && l.opacity > 0.0).collect();
+        let row_bytes = w as usize * 4;
+        let src_stride = self.width as usize * 4;
+        out.par_chunks_mut(row_bytes).enumerate().for_each(|(row, dst)| {
+            let y = y0 as usize + row;
+            for layer in &layers {
+                let start = y * src_stride + x0 as usize * 4;
+                let src = &layer.pixels.as_raw()[start..start + row_bytes];
+                let opaque = layer.opacity >= 1.0;
+                for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+                    match s[3] {
+                        0 => {}
+                        255 if opaque => d.copy_from_slice(s),
+                        _ => {
+                            let out = blend_over([d[0], d[1], d[2], d[3]], [s[0], s[1], s[2], s[3]], layer.opacity);
+                            d.copy_from_slice(&out);
+                        }
+                    }
+                }
+            }
+        });
         out
+    }
+
+    /// Color final de un píxel, sin componer el documento entero.
+    pub fn composite_pixel(&self, x: u32, y: u32) -> [u8; 4] {
+        self.layers
+            .iter()
+            .filter(|l| l.visible && l.opacity > 0.0)
+            .fold([0, 0, 0, 0], |d, l| blend_over(d, l.pixels.get_pixel(x, y).0, l.opacity))
     }
 
     pub fn active_layer(&self) -> &Layer {
@@ -112,6 +172,7 @@ impl Document {
 
     pub fn duplicate_layer(&mut self) {
         let mut copy = self.layers[self.active].clone();
+        copy.id = LayerId::fresh();
         copy.name = format!("{} copia", copy.name);
         self.layers.insert(self.active + 1, copy);
         self.active += 1;
@@ -152,8 +213,8 @@ impl Document {
         let top = self.layers.remove(self.active);
         self.active -= 1;
         if top.visible {
-            let below = &mut self.layers[self.active];
-            for (d, s) in below.pixels.pixels_mut().zip(top.pixels.pixels()) {
+            let below = self.layers[self.active].image_mut();
+            for (d, s) in below.pixels_mut().zip(top.pixels.pixels()) {
                 d.0 = blend_over(d.0, s.0, top.opacity);
             }
         }
@@ -164,7 +225,7 @@ impl Document {
     pub fn crop(&mut self, x0: u32, y0: u32, x1: u32, y1: u32) {
         let (w, h) = (x1 - x0, y1 - y0);
         for layer in &mut self.layers {
-            layer.pixels = imageops::crop_imm(&layer.pixels, x0, y0, w, h).to_image();
+            layer.pixels = Arc::new(imageops::crop_imm(&*layer.pixels, x0, y0, w, h).to_image());
         }
         self.width = w;
         self.height = h;
@@ -186,8 +247,8 @@ impl Document {
         let Some(sel) = &self.selection else {
             return false;
         };
-        let layer = &mut self.layers[self.active];
-        for (p, &m) in layer.pixels.pixels_mut().zip(sel.data.iter()) {
+        let layer = self.layers[self.active].image_mut();
+        for (p, &m) in layer.pixels_mut().zip(sel.data.iter()) {
             if m > 0 {
                 p.0[3] = (p.0[3] as f32 * (1.0 - m as f32 / 255.0)).round() as u8;
             }
@@ -260,7 +321,7 @@ mod tests {
     fn composite_respects_visibility_and_order() {
         let mut doc = Document::new(2, 2, Some([255, 0, 0, 255]));
         doc.add_layer();
-        for p in doc.active_layer_mut().pixels.pixels_mut() {
+        for p in doc.active_layer_mut().image_mut().pixels_mut() {
             *p = Rgba([0, 0, 255, 255]);
         }
         assert_eq!(doc.composite().get_pixel(0, 0).0, [0, 0, 255, 255]);
@@ -305,5 +366,50 @@ mod tests {
         let whole = shift_pixels(&base, None, 1, 0);
         assert_eq!(whole.get_pixel(1, 0).0, [255, 0, 0, 255]);
         assert_eq!(whole.get_pixel(0, 0).0[3], 0);
+    }
+    /// Tres capas deterministas: fondo opaco en gradiente, una con alfa
+    /// variable y opacidad 0.5, y otra con opacidad 0.8.
+    pub(crate) fn doc_de_prueba(w: u32, h: u32) -> Document {
+        let mut doc = Document::new(w, h, None);
+        *doc.layers[0].image_mut() = RgbaImage::from_fn(w, h, |x, y| Rgba([(x % 256) as u8, (y % 256) as u8, 90, 255]));
+        doc.add_layer();
+        *doc.layers[1].image_mut() =
+            RgbaImage::from_fn(w, h, |x, y| Rgba([200, (x * 3 % 256) as u8, 40, ((x + y) * 7 % 256) as u8]));
+        doc.layers[1].opacity = 0.5;
+        doc.add_layer();
+        *doc.layers[2].image_mut() = RgbaImage::from_fn(w, h, |x, y| {
+            Rgba([10, 20, (y * 5 % 256) as u8, if (x / 13) % 2 == 0 { 0 } else { 255 }])
+        });
+        doc.layers[2].opacity = 0.8;
+        doc
+    }
+
+    #[test]
+    fn clonar_el_documento_no_copia_pixeles() {
+        let doc = Document::new(64, 64, Some([1, 2, 3, 255]));
+        let snap = doc.clone();
+        assert!(Arc::ptr_eq(&doc.layers[0].pixels, &snap.layers[0].pixels));
+        let mut doc = doc;
+        doc.layers[0].image_mut().put_pixel(0, 0, Rgba([9, 9, 9, 255]));
+        assert_eq!(snap.layers[0].pixels.get_pixel(0, 0).0, [1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn duplicar_da_un_id_nuevo() {
+        let mut doc = Document::new(8, 8, None);
+        doc.duplicate_layer();
+        assert_ne!(doc.layers[0].id, doc.layers[1].id);
+        assert_eq!(doc.clone().layers[1].id, doc.layers[1].id);
+    }
+
+    #[test]
+    fn componer_un_rectangulo_igual_que_recortar_el_total() {
+        let doc = doc_de_prueba(300, 200);
+        let full = doc.composite();
+        let part = doc.composite_rect(37, 11, 250, 199);
+        assert_eq!(part, imageops::crop_imm(&full, 37, 11, 213, 188).to_image());
+        assert_eq!(doc.composite_pixel(100, 50), full.get_pixel(100, 50).0);
+        // Fuera del lienzo se recorta.
+        assert_eq!(doc.composite_rect(290, 190, 400, 400).dimensions(), (10, 10));
     }
 }

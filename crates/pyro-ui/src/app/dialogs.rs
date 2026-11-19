@@ -16,7 +16,7 @@ use crate::design::widgets;
 
 pub(super) struct FilterDialog {
     pub(super) filter: Filter,
-    pub(super) backup: RgbaImage,
+    pub(super) backup: Arc<RgbaImage>,
     pub(super) dirty: bool,
 }
 
@@ -210,7 +210,7 @@ impl PyroApp {
             let filtered = dlg.filter.apply(&dlg.backup);
             let out = filters::apply_masked(&dlg.backup, &filtered, self.doc.selection.as_ref());
             let active = self.doc.active;
-            self.doc.layers[active].pixels = out;
+            self.doc.layers[active].pixels = Arc::new(out);
             self.canvas_dirty = true;
             dlg.dirty = false;
         }
@@ -220,7 +220,7 @@ impl PyroApp {
             self.filter_dialog = None;
         } else if cancel {
             let active = self.doc.active;
-            self.doc.layers[active].pixels = dlg.backup.clone();
+            self.doc.layers[active].pixels = Arc::clone(&dlg.backup);
             self.history.discard_last();
             self.filter_dialog = None;
             self.canvas_dirty = true;

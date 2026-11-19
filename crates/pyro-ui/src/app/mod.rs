@@ -20,6 +20,7 @@ mod updates;
 mod view;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use eframe::egui::{self, TextureHandle, TextureOptions, Vec2};
 
@@ -414,7 +415,7 @@ impl PyroApp {
                     self.filter_dialog = Some(FilterDialog { filter, backup, dirty: true });
                 } else {
                     let out = filters::apply_masked(&backup, &filter.apply(&backup), self.doc.selection.as_ref());
-                    self.doc.active_layer_mut().pixels = out;
+                    self.doc.active_layer_mut().pixels = Arc::new(out);
                     self.canvas_dirty = true;
                     self.info(format!("{} aplicado.", filter.name()));
                 }

@@ -2705,6 +2705,7 @@ name = "pyro-core"
 version = "0.2.0"
 dependencies = [
  "image",
+ "rayon",
 ]
 
 [[package]]

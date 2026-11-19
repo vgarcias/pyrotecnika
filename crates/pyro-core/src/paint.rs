@@ -5,6 +5,7 @@
 //! sitio dentro del mismo trazo.
 
 use image::{Rgba, RgbaImage};
+use std::sync::Arc;
 
 use crate::document::{blend_over, lerp_rgba};
 use crate::selection::{Mask, SelectMode};
@@ -46,14 +47,15 @@ pub fn dab_weight(dist: f32, radius: f32, hardness: f32) -> f32 {
 
 pub struct Stroke {
     kind: StrokeKind,
-    base: RgbaImage,
+    /// La capa tal como estaba al empezar el trazo (compartida, sin copiar).
+    base: Arc<RgbaImage>,
     coverage: Vec<f32>,
     clone_offset: (f32, f32),
 }
 
 impl Stroke {
     /// `clone_offset` = origen − punto inicial (solo para el tampón).
-    pub fn new(kind: StrokeKind, base: RgbaImage, clone_offset: (f32, f32)) -> Self {
+    pub fn new(kind: StrokeKind, base: Arc<RgbaImage>, clone_offset: (f32, f32)) -> Self {
         let len = (base.width() * base.height()) as usize;
         Self { kind, base, coverage: vec![0.0; len], clone_offset }
     }
@@ -186,7 +188,7 @@ mod tests {
     fn paint_dab_colors_center_not_outside() {
         let base = RgbaImage::from_pixel(20, 20, Rgba([255, 255, 255, 255]));
         let mut target = base.clone();
-        let mut s = Stroke::new(StrokeKind::Paint, base, (0.0, 0.0));
+        let mut s = Stroke::new(StrokeKind::Paint, Arc::new(base.clone()), (0.0, 0.0));
         let p = BrushParams { radius: 4.0, hardness: 1.0, opacity: 1.0, color: [255, 0, 0, 255] };
         s.dab(&mut target, None, 10.0, 10.0, &p);
         assert_eq!(target.get_pixel(10, 10).0, [255, 0, 0, 255]);
@@ -197,7 +199,7 @@ mod tests {
     fn opacity_does_not_accumulate_within_stroke() {
         let base = RgbaImage::from_pixel(10, 10, Rgba([255, 255, 255, 255]));
         let mut target = base.clone();
-        let mut s = Stroke::new(StrokeKind::Paint, base, (0.0, 0.0));
+        let mut s = Stroke::new(StrokeKind::Paint, Arc::new(base.clone()), (0.0, 0.0));
         let p = BrushParams { radius: 3.0, hardness: 1.0, opacity: 0.5, color: [0, 0, 0, 255] };
         s.dab(&mut target, None, 5.0, 5.0, &p);
         let once = target.get_pixel(5, 5).0;
@@ -210,7 +212,7 @@ mod tests {
         let base = RgbaImage::from_pixel(10, 10, Rgba([255, 255, 255, 255]));
         let sel = Mask::rect(10, 10, (0.0, 0.0), (5.0, 10.0));
         let mut target = base.clone();
-        let mut s = Stroke::new(StrokeKind::Erase, base, (0.0, 0.0));
+        let mut s = Stroke::new(StrokeKind::Erase, Arc::new(base.clone()), (0.0, 0.0));
         let p = BrushParams { radius: 10.0, hardness: 1.0, ..Default::default() };
         s.dab(&mut target, Some(&sel), 5.0, 5.0, &p);
         assert_eq!(target.get_pixel(2, 5).0[3], 0);
@@ -226,7 +228,7 @@ mod tests {
             }
         }
         let mut target = base.clone();
-        let mut s = Stroke::new(StrokeKind::Clone, base, (-12.0, 0.0));
+        let mut s = Stroke::new(StrokeKind::Clone, Arc::new(base.clone()), (-12.0, 0.0));
         let p = BrushParams { radius: 2.0, hardness: 1.0, ..Default::default() };
         s.dab(&mut target, None, 14.5, 5.5, &p);
         assert_eq!(target.get_pixel(14, 5).0, [0, 255, 0, 255]);

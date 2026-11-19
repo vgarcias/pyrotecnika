@@ -1,5 +1,7 @@
 //! Herramientas del lienzo: selección, pintura, relleno y cuentagotas.
 
+use std::sync::Arc;
+
 use eframe::egui::{self, Modifiers};
 use image::RgbaImage;
 
@@ -86,7 +88,7 @@ impl Tool {
 
 pub(super) enum Drag {
     None,
-    Move { base: RgbaImage, base_sel: Option<Mask>, start: (f32, f32), last: (i32, i32) },
+    Move { base: Arc<RgbaImage>, base_sel: Option<Mask>, start: (f32, f32), last: (i32, i32) },
     Shape { start: (f32, f32), current: (f32, f32) },
     Lasso { points: Vec<(f32, f32)> },
     Paint { stroke: Stroke, last: (f32, f32) },
@@ -159,7 +161,7 @@ impl PyroApp {
                 self.clone_stroke_offset = (t == Tool::Clone).then_some(offset);
                 let mut stroke = Stroke::new(t.stroke_kind(), self.doc.active_layer().pixels.clone(), offset);
                 let active = self.doc.active;
-                stroke.dab(&mut self.doc.layers[active].pixels, self.doc.selection.as_ref(), p.0, p.1, &self.brush);
+                stroke.dab(self.doc.layers[active].image_mut(), self.doc.selection.as_ref(), p.0, p.1, &self.brush);
                 self.canvas_dirty = true;
                 Drag::Paint { stroke, last: p }
             }
@@ -175,7 +177,7 @@ impl PyroApp {
                 if d != *last {
                     *last = d;
                     let active = self.doc.active;
-                    self.doc.layers[active].pixels = shift_pixels(base, base_sel.as_ref(), d.0, d.1);
+                    self.doc.layers[active].pixels = Arc::new(shift_pixels(base, base_sel.as_ref(), d.0, d.1));
                     self.doc.selection = base_sel.as_ref().map(|m| m.shifted(d.0, d.1));
                     self.canvas_dirty = true;
                     self.sel_dirty = true;
@@ -193,7 +195,7 @@ impl PyroApp {
                 let active = self.doc.active;
                 for pt in paint::stroke_points(*last, p, spacing) {
                     stroke.dab(
-                        &mut self.doc.layers[active].pixels,
+                        self.doc.layers[active].image_mut(),
                         self.doc.selection.as_ref(),
                         pt.0,
                         pt.1,
@@ -254,7 +256,7 @@ impl PyroApp {
                     self.history.push(&self.doc);
                     let active = self.doc.active;
                     paint::flood_fill(
-                        &mut self.doc.layers[active].pixels,
+                        self.doc.layers[active].image_mut(),
                         self.doc.selection.as_ref(),
                         x,
                         y,

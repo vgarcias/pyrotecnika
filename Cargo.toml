@@ -25,6 +25,7 @@ rfd = "0.15"
 # Backend wgpu: Metal en macOS, DX12/Vulkan en Windows, Vulkan/GL en Linux.
 eframe = { version = "0.31", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
 crc32fast = "1"
+rayon = "1"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
