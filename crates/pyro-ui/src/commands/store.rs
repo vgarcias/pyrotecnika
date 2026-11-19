@@ -28,11 +28,60 @@ impl Default for Settings {
     }
 }
 
+/// Valor `key` de `table` con el tipo `T`, o `None` (con aviso) si no se
+/// entiende.
+fn field<T: DeserializeOwned>(table: &toml::Table, key: &str, what: &str, warns: &mut Vec<String>) -> Option<T> {
+    let value = table.get(key)?;
+    match value.clone().try_into::<T>() {
+        Ok(v) => Some(v),
+        Err(_) => {
+            warns.push(format!("settings.toml: «{what}» = {value} no se entiende; se usa el valor de fábrica."));
+            None
+        }
+    }
+}
+
+/// Subtabla `key`, o vacía (con aviso si existía con otro tipo).
+fn section(table: &toml::Table, key: &str, warns: &mut Vec<String>) -> toml::Table {
+    match table.get(key) {
+        Some(toml::Value::Table(t)) => t.clone(),
+        Some(_) => {
+            warns.push(format!("settings.toml: [{key}] no es una sección; se usan los valores de fábrica."));
+            toml::Table::new()
+        }
+        None => toml::Table::new(),
+    }
+}
+
 impl Settings {
+    /// Lee el archivo valor a valor: lo que no se entiende vuelve a fábrica
+    /// y se avisa, sin perder el resto.
+    pub(crate) fn from_table(table: &toml::Table, warns: &mut Vec<String>) -> Settings {
+        let mut s = Settings::default();
+        if let Some(v) = field(table, "schema", "schema", warns) {
+            s.schema = v;
+        }
+        let appearance = section(table, "appearance", warns);
+        if let Some(v) = field(&appearance, "theme", "appearance.theme", warns) {
+            s.appearance.theme = v;
+        }
+        if let Some(v) = field(&appearance, "ui_scale", "appearance.ui_scale", warns) {
+            s.appearance.ui_scale = v;
+        }
+        let recent = section(table, "recent", warns);
+        if let Some(v) = field(&recent, "files", "recent.files", warns) {
+            s.recent.files = v;
+        }
+        s
+    }
+
     /// Acota lo que pudo llegar fuera de rango desde el archivo.
     pub(crate) fn sanitize(&mut self) {
         self.appearance.ui_scale = step_scale(self.appearance.ui_scale, 0);
         self.recent.files.truncate(MAX_RECENT);
+        for f in &mut self.recent.files {
+            *f = strip_verbatim(f);
+        }
     }
 }
 
@@ -56,8 +105,22 @@ pub(crate) struct Recent {
     pub files: Vec<PathBuf>,
 }
 
+/// Ruta absoluta y sin enlaces, en la forma que dan los diálogos del SO.
+/// En Windows `canonicalize` devuelve `\\?\C:\…`, que no compara igual con
+/// `C:\…` (y Explorer no la entiende): se quita ese prefijo.
 fn normalized(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+    std::fs::canonicalize(p).map_or_else(|_| p.to_path_buf(), |c| strip_verbatim(&c))
+}
+
+fn strip_verbatim(p: &Path) -> PathBuf {
+    let text = p.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => p.to_path_buf(),
+    }
 }
 
 impl Recent {
@@ -104,7 +167,10 @@ impl Store {
         self.dir.as_ref().map(|d| d.join(name))
     }
 
-    fn read<T: DeserializeOwned>(&self, name: &str, schema: impl Fn(&T) -> u32, warns: &mut Vec<String>) -> Read<T> {
+    /// Lee `name` como tabla TOML. Solo un texto que no es TOML se aparta
+    /// como `.bak`; los valores sueltos que no se entienden los resuelve
+    /// quien interpreta la tabla.
+    fn read(&self, name: &str, warns: &mut Vec<String>) -> Read<toml::Table> {
         let Some(path) = self.path(name) else { return Read::Missing };
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
@@ -114,16 +180,16 @@ impl Store {
                 return Read::Missing;
             }
         };
-        match toml::from_str::<T>(&text) {
-            Ok(v) => {
-                let newer = schema(&v) > SCHEMA;
+        match toml::from_str::<toml::Table>(&text) {
+            Ok(t) => {
+                let newer = t.get("schema").and_then(toml::Value::as_integer).is_some_and(|v| v > i64::from(SCHEMA));
                 if newer {
                     warns.push(format!(
                         "{name} es de una versión más nueva de Pyrotecnika; se usa lo que se entiende y se \
                          guardará una copia en {name}.bak antes de cambiarlo."
                     ));
                 }
-                Read::Ok(v, newer)
+                Read::Ok(t, newer)
             }
             Err(_) => {
                 let _ = std::fs::rename(&path, path.with_extension("toml.bak"));
@@ -136,10 +202,10 @@ impl Store {
 
     pub(crate) fn load_settings(&mut self) -> (Settings, Vec<String>) {
         let mut warns = Vec::new();
-        let mut settings = match self.read::<Settings>("settings.toml", |s| s.schema, &mut warns) {
-            Read::Ok(s, newer) => {
+        let mut settings = match self.read("settings.toml", &mut warns) {
+            Read::Ok(t, newer) => {
                 self.settings_newer = newer;
-                s
+                Settings::from_table(&t, &mut warns)
             }
             Read::Missing | Read::Broken => Settings::default(),
         };
@@ -149,9 +215,10 @@ impl Store {
 
     pub(crate) fn load_keymap(&mut self) -> (Keymap, Vec<String>) {
         let mut warns = Vec::new();
-        match self.read::<KeymapFile>("keymap.toml", |f| f.schema, &mut warns) {
-            Read::Ok(file, newer) => {
+        match self.read("keymap.toml", &mut warns) {
+            Read::Ok(t, newer) => {
                 self.keymap_newer = newer;
+                let file = KeymapFile::from_table(&t, &mut warns);
                 let (k, more) = Keymap::from_file(&file);
                 warns.extend(more);
                 (k, warns)
@@ -296,5 +363,61 @@ mod tests {
         assert_eq!(k2, Keymap::fireworks());
         assert_eq!(w.len(), 1);
         assert!(d.path().join("keymap.toml.bak").exists());
+    }
+    #[test]
+    fn reciente_sin_prefijo_verbatim() {
+        let d = tempdir().unwrap();
+        let f = d.path().join("a.png");
+        std::fs::write(&f, b"x").unwrap();
+        let mut r = Recent::default();
+        r.push(f.clone());
+        let stored = r.files[0].to_string_lossy().into_owned();
+        assert!(!stored.starts_with(r"\\?\"), "{stored}");
+        assert!(r.files[0].exists());
+        r.remove(&f);
+        assert!(r.files.is_empty());
+    }
+
+    #[test]
+    fn valor_de_tipo_equivocado_conserva_lo_demas() {
+        let d = tempdir().unwrap();
+        std::fs::write(
+            d.path().join("settings.toml"),
+            "schema = 1\n[appearance]\ntheme = \"dark\"\nui_scale = \"1.2\"\n[recent]\nfiles = [\"a.png\"]\n",
+        )
+        .unwrap();
+        let (s, w) = Store::new(Some(d.path().into())).load_settings();
+        assert_eq!(s.appearance.theme, ThemeChoice::Dark);
+        assert_eq!(s.appearance.ui_scale, 1.0);
+        assert_eq!(s.recent.files, vec![PathBuf::from("a.png")]);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(!d.path().join("settings.toml.bak").exists());
+    }
+
+    #[test]
+    fn tema_desconocido_vuelve_al_de_fabrica() {
+        let d = tempdir().unwrap();
+        std::fs::write(d.path().join("settings.toml"), "[appearance]\ntheme = \"neon\"\nui_scale = 1.5\n").unwrap();
+        let (s, w) = Store::new(Some(d.path().into())).load_settings();
+        assert_eq!(s.appearance.theme, ThemeChoice::System);
+        assert_eq!(s.appearance.ui_scale, 1.5);
+        assert_eq!(w.len(), 1, "{w:?}");
+    }
+
+    #[test]
+    fn atajo_escrito_como_texto_y_valor_raro() {
+        use crate::commands::chord::Chord;
+        let d = tempdir().unwrap();
+        std::fs::write(
+            d.path().join("keymap.toml"),
+            "schema = 1\n[bindings]\n\"file.export\" = \"Ctrl+E\"\n\"file.open\" = 5\n\"edit.palette\" = [\"Ctrl+J\"]\n",
+        )
+        .unwrap();
+        let (k, w) = Store::new(Some(d.path().into())).load_keymap();
+        assert_eq!(k.chords("file.export"), &[Chord::parse("Ctrl+E").unwrap()]);
+        assert_eq!(k.chords("file.open"), Keymap::fireworks().chords("file.open"));
+        assert_eq!(k.chords("edit.palette"), &[Chord::parse("Ctrl+J").unwrap()]);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(!d.path().join("keymap.toml.bak").exists());
     }
 }

@@ -14,9 +14,9 @@ impl PyroApp {
             self.request(Pending::Open(path), ctx);
         }
 
-        // Con la confirmación abierta, o escribiendo en un campo, los atajos
-        // no actúan sobre el documento.
-        if self.confirm.is_some() || self.prefs.is_some() || ctx.wants_keyboard_input() {
+        // Con un diálogo modal abierto (confirmación, preferencias, paleta),
+        // o escribiendo en un campo, los atajos no actúan sobre el documento.
+        if self.confirm.is_some() || self.prefs.is_some() || self.palette.is_some() || ctx.wants_keyboard_input() {
             return;
         }
         let pressed: Vec<(Chord, bool)> = ctx.input(|i| {

@@ -26,6 +26,36 @@ pub(crate) struct KeymapFile {
     pub bindings: BTreeMap<String, Vec<String>>,
 }
 
+impl KeymapFile {
+    /// Lee el archivo valor a valor: un atajo escrito como texto suelto
+    /// cuenta como lista de uno; lo que no se entiende se ignora y se avisa,
+    /// sin perder el resto.
+    pub(crate) fn from_table(table: &toml::Table, warns: &mut Vec<String>) -> KeymapFile {
+        let schema = table.get("schema").and_then(toml::Value::as_integer).unwrap_or(0).max(0) as u32;
+        let mut bindings = BTreeMap::new();
+        match table.get("bindings") {
+            None => {}
+            Some(toml::Value::Table(t)) => {
+                for (id, value) in t {
+                    let list = match value {
+                        toml::Value::String(s) => vec![s.clone()],
+                        toml::Value::Array(items) if items.iter().all(toml::Value::is_str) => {
+                            items.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+                        }
+                        _ => {
+                            warns.push(format!("Atajos de «{id}»: no es una lista de combinaciones; se ignora."));
+                            continue;
+                        }
+                    };
+                    bindings.insert(id.clone(), list);
+                }
+            }
+            Some(_) => warns.push("Atajos: [bindings] no es una tabla; se ignora.".into()),
+        }
+        KeymapFile { schema, bindings }
+    }
+}
+
 fn index(id: &str) -> Option<usize> {
     CATALOG.iter().position(|c| c.id == id)
 }
@@ -79,15 +109,24 @@ impl Keymap {
 
     /// Añade `c` a `id` y se lo quita a quien lo tuviera.
     pub(crate) fn assign(&mut self, id: &str, c: Chord) {
-        let Some(me) = index(id) else { return };
+        self.take(id, c);
+    }
+
+    /// Como [`Keymap::assign`], y devuelve los índices de los comandos que
+    /// perdieron `c`.
+    fn take(&mut self, id: &str, c: Chord) -> Vec<usize> {
+        let Some(me) = index(id) else { return Vec::new() };
+        let mut lost = Vec::new();
         for j in 0..CATALOG.len() {
-            if j != me && !may_share(me, j, c) {
+            if j != me && !may_share(me, j, c) && self.bindings[j].contains(&c) {
                 self.bindings[j].retain(|x| *x != c);
+                lost.push(j);
             }
         }
         if !self.bindings[me].contains(&c) {
             self.bindings[me].push(c);
         }
+        lost
     }
 
     pub(crate) fn remove(&mut self, id: &str, c: Chord) {
@@ -97,12 +136,15 @@ impl Keymap {
     }
 
     /// Vuelve a los atajos de fábrica del comando, quitándoselos a otros.
-    pub(crate) fn reset(&mut self, id: &str) {
-        let Some(i) = index(id) else { return };
+    /// Devuelve a quién se le quitó cada combinación, para avisar.
+    pub(crate) fn reset(&mut self, id: &str) -> Vec<(&'static str, Chord)> {
+        let Some(i) = index(id) else { return Vec::new() };
         self.bindings[i].clear();
+        let mut lost = Vec::new();
         for c in defaults(i) {
-            self.assign(id, c);
+            lost.extend(self.take(id, c).into_iter().map(|j| (CATALOG[j].id, c)));
         }
+        lost
     }
 
     pub(crate) fn is_default(&self, id: &str) -> bool {
@@ -165,7 +207,16 @@ impl Keymap {
                     continue;
                 }
                 claimed.push((c, i));
-                map.assign(def.id, c);
+                // Si se lo quita a un comando que no está en el archivo, ese
+                // pierde un atajo de fábrica: se avisa.
+                for j in map.take(def.id, c) {
+                    if !file.bindings.contains_key(CATALOG[j].id) {
+                        warns.push(format!(
+                            "Atajos: «{text}» pasa a «{}» y deja a «{}» sin ese atajo.",
+                            def.name, CATALOG[j].name
+                        ));
+                    }
+                }
             }
         }
         (map, warns)
@@ -253,5 +304,23 @@ mod tests {
         assert_eq!(warns.len(), 4, "{warns:?}"); // id desconocido, tecla inválida, tecla sola, conflicto
         assert_eq!(k.chords("file.open"), &[ch("Ctrl+J")]); // file.open va antes en el catálogo
         assert!(k.chords("file.export").is_empty());
+    }
+    #[test]
+    fn restablecer_dice_lo_que_quita() {
+        let mut k = Keymap::fireworks();
+        k.assign("edit.palette", ch("Ctrl+Shift+R"));
+        assert_eq!(k.reset("file.export"), vec![("edit.palette", ch("Ctrl+Shift+R"))]);
+        assert!(k.chords("edit.palette").contains(&ch("Ctrl+K")));
+        assert!(!k.chords("edit.palette").contains(&ch("Ctrl+Shift+R")));
+        assert!(Keymap::fireworks().reset("file.export").is_empty());
+    }
+
+    #[test]
+    fn archivo_que_pisa_un_atajo_de_fabrica_avisa() {
+        let f: KeymapFile = toml::from_str("schema = 1\n[bindings]\n\"file.export\" = [\"Ctrl+Z\"]\n").unwrap();
+        let (k, warns) = Keymap::from_file(&f);
+        assert_eq!(k.chords("file.export"), &[ch("Ctrl+Z")]);
+        assert_eq!(warns.len(), 1, "{warns:?}");
+        assert!(warns[0].contains("Deshacer"), "{warns:?}");
     }
 }

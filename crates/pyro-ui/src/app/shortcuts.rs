@@ -134,7 +134,17 @@ impl PyroApp {
                     prefs.message = None;
                 }
                 if ui.add_enabled(!self.keymap.is_default(id), egui::Button::new("Restablecer")).clicked() {
-                    self.keymap.reset(id);
+                    let lost = self.keymap.reset(id);
+                    prefs.message = (!lost.is_empty()).then(|| {
+                        let parts: Vec<String> = lost
+                            .iter()
+                            .map(|(other, c)| {
+                                let name = find(other).map_or(*other, |d| d.name);
+                                format!("{} se quitó a «{name}»", c.label(mac))
+                            })
+                            .collect();
+                        format!("Restablecido. {}.", parts.join("; "))
+                    });
                     changed = true;
                 }
             });
@@ -214,9 +224,13 @@ pub(super) fn export_keymap(k: &Keymap, path: &Path) -> Result<(), String> {
 /// Lee un archivo de atajos; sustituye las personalizaciones vigentes.
 pub(super) fn import_keymap(path: &Path) -> Result<(Keymap, Vec<String>), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("No se pudo leer {}: {e}.", path.display()))?;
-    let file: KeymapFile =
+    let table: toml::Table =
         toml::from_str(&text).map_err(|_| format!("{} no es un archivo de atajos válido.", path.display()))?;
-    Ok(Keymap::from_file(&file))
+    let mut warns = Vec::new();
+    let file = KeymapFile::from_table(&table, &mut warns);
+    let (k, more) = Keymap::from_file(&file);
+    warns.extend(more);
+    Ok((k, warns))
 }
 
 #[cfg(test)]

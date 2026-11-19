@@ -169,6 +169,26 @@ fn esc_cierra_la_paleta() {
     assert!(h.state().palette.is_none());
 }
 
+#[test]
+fn con_la_paleta_abierta_no_actuan_los_atajos() {
+    let mut h = main_scene();
+    h.state_mut().tool = Tool::Brush;
+    h.press_key_modifiers(ctrl(), Key::K);
+    h.run_steps(2);
+    // El campo pierde el foco (clic en la barra de desplazamiento, en una
+    // fila desactivada…).
+    h.ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    h.run_steps(2);
+    h.press_key(Key::G);
+    h.run_steps(2);
+    assert!(h.state().palette.is_some());
+    assert_eq!(h.state().tool, Tool::Brush);
+}
+
 // ---------- Preferencias › Atajos ----------
 
 fn ch(s: &str) -> Chord {
