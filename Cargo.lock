@@ -2740,6 +2740,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyro-services"
+version = "0.2.0"
+dependencies = [
+ "pyro-core",
+]
+
+[[package]]
 name = "pyro-ui"
 version = "0.2.0"
 dependencies = [
@@ -2749,6 +2756,7 @@ dependencies = [
  "pyro-core",
  "pyro-formats",
  "pyro-platform",
+ "pyro-services",
  "rfd",
  "serde",
  "tempfile",

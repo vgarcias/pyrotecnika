@@ -31,9 +31,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: El núcleo y los formatos no dependen de la interfaz
+      - name: El núcleo, los formatos y los servicios no dependen de la interfaz
         run: |
-          for crate in pyro-core pyro-formats; do
+          for crate in pyro-core pyro-formats pyro-services; do
             if cargo tree -p "$crate" -e normal | grep -E "egui|eframe|winit"; then
               echo "::error::$crate no puede depender de la interfaz"; exit 1
             fi

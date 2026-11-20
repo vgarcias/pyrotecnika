@@ -15,6 +15,7 @@ publish = false
 pyro-core = { path = "crates/pyro-core" }
 pyro-formats = { path = "crates/pyro-formats" }
 pyro-platform = { path = "crates/pyro-platform" }
+pyro-services = { path = "crates/pyro-services" }
 pyro-ui = { path = "crates/pyro-ui" }
 
 anyhow = "1"
