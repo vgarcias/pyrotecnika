@@ -10,3 +10,4 @@ pub mod filters;
 pub mod history;
 pub mod paint;
 pub mod selection;
+pub mod task;

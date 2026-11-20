@@ -2,9 +2,11 @@
 //! mezcla el resultado con el original según la selección.
 
 use image::{imageops, Rgba, RgbaImage};
+use rayon::prelude::*;
 
 use crate::document::lerp_rgba;
 use crate::selection::Mask;
+use crate::task::{Cancelled, Monitor};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Filter {
@@ -56,6 +58,67 @@ impl Filter {
                 [l, l, l, p[3]]
             }),
         }
+    }
+}
+
+/// Filas por banda al filtrar en paralelo.
+const BAND: u32 = 128;
+
+impl Filter {
+    /// Filas de vecindad que necesita cada banda para dar el mismo resultado
+    /// que el filtro sobre la imagen entera (el radio del núcleo gaussiano de
+    /// `imageops::blur`, más holgura).
+    fn margin(&self) -> u32 {
+        match *self {
+            Filter::GaussianBlur { sigma } | Filter::Sharpen { sigma, .. } if sigma > 0.0 => {
+                let kernel = (((sigma - 0.8) / 0.3 + 1.0) * 2.0 + 1.0).max(3.0) as u32;
+                kernel / 2 + 2
+            }
+            _ => 0,
+        }
+    }
+
+    /// Aplica el filtro (mezclado con la selección) por bandas de filas en
+    /// paralelo. Igual que `apply_masked(img, &self.apply(img), sel)`, pero
+    /// se puede cancelar entre bandas e informa del avance.
+    pub fn run(&self, img: &RgbaImage, sel: Option<&Mask>, m: &dyn Monitor) -> Result<RgbaImage, Cancelled> {
+        let (w, h) = img.dimensions();
+        let margin = self.margin();
+        let starts: Vec<u32> = (0..h).step_by(BAND as usize).collect();
+        let total = starts.len().max(1) as f32;
+        let done = std::sync::atomic::AtomicUsize::new(0);
+        let bands: Vec<Result<RgbaImage, Cancelled>> = starts
+            .par_iter()
+            .map(|&y0| {
+                if m.cancelled() {
+                    return Err(Cancelled);
+                }
+                let y1 = (y0 + BAND).min(h);
+                let (a, b) = (y0.saturating_sub(margin), (y1 + margin).min(h));
+                let source = imageops::crop_imm(img, 0, a, w, b - a).to_image();
+                let filtered = self.apply(&source);
+                let inner = imageops::crop_imm(&filtered, 0, y0 - a, w, y1 - y0).to_image();
+                let original = imageops::crop_imm(img, 0, y0, w, y1 - y0).to_image();
+                let band_sel = sel.map(|s| Mask {
+                    width: w,
+                    height: y1 - y0,
+                    data: s.data[(y0 * w) as usize..(y1 * w) as usize].to_vec(),
+                });
+                let out = apply_masked(&original, &inner, band_sel.as_ref());
+                let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                m.progress(n as f32 / total);
+                Ok(out)
+            })
+            .collect();
+        let mut out = RgbaImage::new(w, h);
+        let raw: &mut [u8] = &mut out;
+        let mut offset = 0;
+        for band in bands {
+            let band = band?;
+            raw[offset..offset + band.as_raw().len()].copy_from_slice(band.as_raw());
+            offset += band.as_raw().len();
+        }
+        Ok(out)
     }
 }
 
@@ -257,5 +320,59 @@ mod tests {
         let edge = b.get_pixel(4, 0).0;
         assert!(edge[3] > 0);
         assert!(edge[0] > 240, "borde oscurecido: {edge:?}");
+    }
+    use crate::task::{Monitor, NoMonitor};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn imagen_de_prueba(w: u32, h: u32) -> RgbaImage {
+        let mut seed = 12345_u64;
+        RgbaImage::from_fn(w, h, |_, _| {
+            let mut b = [0u8; 4];
+            for v in &mut b {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                *v = (seed >> 56) as u8;
+            }
+            Rgba(b)
+        })
+    }
+
+    #[test]
+    fn por_bandas_igual_que_entero() {
+        let img = imagen_de_prueba(301, 517);
+        let sel = Some(Mask::ellipse(301, 517, (20.0, 30.0), (280.0, 500.0)));
+        for f in [
+            Filter::GAUSSIAN_BLUR,
+            Filter::GaussianBlur { sigma: 30.0 },
+            Filter::SHARPEN,
+            Filter::LEVELS,
+            Filter::HUE_SATURATION,
+            Filter::BRIGHTNESS_CONTRAST,
+            Filter::Invert,
+            Filter::Grayscale,
+        ] {
+            for s in [None, sel.as_ref()] {
+                let want = apply_masked(&img, &f.apply(&img), s);
+                assert!(f.run(&img, s, &NoMonitor).unwrap() == want, "{} (selección: {})", f.name(), s.is_some());
+            }
+        }
+    }
+
+    /// Cancela en cuanto termina la primera banda.
+    struct CancelAfterFirst(AtomicUsize);
+    impl Monitor for CancelAfterFirst {
+        fn cancelled(&self) -> bool {
+            self.0.load(Ordering::SeqCst) > 0
+        }
+        fn progress(&self, _fraction: f32) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn cancelar_detiene_el_filtro() {
+        let img = imagen_de_prueba(64, 128 * 40);
+        let m = CancelAfterFirst(AtomicUsize::new(0));
+        assert_eq!(Filter::GAUSSIAN_BLUR.run(&img, None, &m), Err(Cancelled));
+        assert!(m.0.load(Ordering::SeqCst) < 40, "{}", m.0.load(Ordering::SeqCst));
     }
 }
