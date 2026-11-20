@@ -33,10 +33,12 @@ pub(super) enum Scene {
     Prefs,
     /// Preferencias › Apariencia (solo se captura en oscuro).
     PrefsAppearance,
+    /// Abriendo un archivo al 40 %: progreso y «Cancelar» en la barra de estado.
+    Task,
 }
 
 impl Scene {
-    pub(super) const ALL: [Scene; 8] = [
+    pub(super) const ALL: [Scene; 9] = [
         Scene::Main,
         Scene::Export,
         Scene::Filter,
@@ -45,6 +47,7 @@ impl Scene {
         Scene::LongNames,
         Scene::Palette,
         Scene::Prefs,
+        Scene::Task,
     ];
 
     pub(super) fn name(self) -> &'static str {
@@ -58,6 +61,7 @@ impl Scene {
             Scene::Palette => "paleta",
             Scene::Prefs => "preferencias-atajos",
             Scene::PrefsAppearance => "preferencias-apariencia",
+            Scene::Task => "tarea-en-curso",
         }
     }
 }
@@ -132,12 +136,26 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
             app.prefs = Some(prefs);
         }
         Scene::PrefsAppearance => app.prefs = Some(super::prefs::PrefsDialog::new()),
+        Scene::Task => {
+            let job = pyro_services::jobs::Job::spawn(super::tasks::wake(&ctx), |ctx| {
+                use pyro_core::task::Monitor;
+                ctx.progress(0.4);
+                loop {
+                    ctx.check()?;
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            });
+            app.start_task(super::tasks::TaskKind::Open("cenote-final.png".into()), job);
+        }
     }
     harness.run_steps(4);
     // La exportación codifica en otro hilo: se espera a que termine para
     // que la captura muestre el tamaño y la vista previa.
     for _ in 0..200 {
-        if harness.state().export_dialog.as_ref().is_none_or(|d| d.bytes.is_some()) {
+        let app = harness.state();
+        let export_ready = app.export_dialog.as_ref().is_none_or(|d| d.bytes.is_some());
+        let task_ready = app.task.as_ref().is_none_or(|t| t.job.progress().is_some());
+        if export_ready && task_ready {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));

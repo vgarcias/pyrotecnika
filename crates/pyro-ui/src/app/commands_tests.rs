@@ -115,6 +115,7 @@ fn abrir_registra_el_reciente() {
     let mut h = main_scene();
     let ctx = h.ctx.clone();
     h.state_mut().open_path(path.clone(), &ctx);
+    super::tasks_tests::wait_task(&mut h);
     assert_eq!(h.state().settings.recent.files.len(), 1);
     assert!(h.state().settings.recent.files[0].ends_with("a.png"));
 }

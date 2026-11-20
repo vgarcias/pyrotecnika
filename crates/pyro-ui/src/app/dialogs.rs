@@ -10,6 +10,7 @@ use image::RgbaImage;
 use pyro_core::filters::{self, Filter};
 use pyro_formats::export::{self, ExportFormat};
 use pyro_formats::fwpng::FwInfo;
+use pyro_formats::io;
 
 use super::canvas_tiles::Dirty;
 use super::{format_size, guard, Pending, PyroApp, Tone};
@@ -351,14 +352,18 @@ impl PyroApp {
         egui::Window::new("Nuevo documento").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             egui::Grid::new("nuevo").show(ui, |ui| {
                 ui.label("Ancho");
-                ui.add(egui::DragValue::new(&mut dlg.width).range(1..=8192).suffix(" px"));
+                ui.add(egui::DragValue::new(&mut dlg.width).range(1..=io::MAX_SIDE).suffix(" px"));
                 ui.end_row();
                 ui.label("Alto");
-                ui.add(egui::DragValue::new(&mut dlg.height).range(1..=8192).suffix(" px"));
+                ui.add(egui::DragValue::new(&mut dlg.height).range(1..=io::MAX_SIDE).suffix(" px"));
                 ui.end_row();
             });
             ui.checkbox(&mut dlg.transparent, "Fondo transparente");
-            create = widgets::primary_button(ui, "Crear").clicked();
+            let too_large = io::check_size(dlg.width, dlg.height).err();
+            if let Some(e) = &too_large {
+                guard::notice(ui, Tone::Warn, &e.to_string());
+            }
+            create = ui.add_enabled_ui(too_large.is_none(), |ui| widgets::primary_button(ui, "Crear")).inner.clicked();
         });
         if create {
             let pending = Pending::New { width: dlg.width, height: dlg.height, transparent: dlg.transparent };

@@ -18,6 +18,9 @@ mod prefs;
 #[cfg(test)]
 mod scenes;
 mod shortcuts;
+mod tasks;
+#[cfg(test)]
+mod tasks_tests;
 pub(crate) mod tools;
 mod updates;
 mod view;
@@ -142,6 +145,11 @@ pub struct PyroApp {
     palette: Option<palette::Palette>,
     /// Editar › Preferencias… abierta.
     prefs: Option<prefs::PrefsDialog>,
+    /// Tarea en segundo plano que va a cambiar el documento (abrir, filtro).
+    task: Option<tasks::DocTask>,
+    /// Sube cada vez que se abre o crea un documento: el resultado de una
+    /// tarea lanzada sobre otro se descarta.
+    generation: u64,
 }
 
 impl PyroApp {
@@ -204,6 +212,8 @@ impl PyroApp {
             save_warned: false,
             palette: None,
             prefs: None,
+            task: None,
+            generation: 0,
         };
         if !warns.is_empty() {
             app.warn(warns.join(" "));
@@ -234,6 +244,9 @@ impl PyroApp {
 
     /// Si la acción tiene sentido ahora (menús y paleta la deshabilitan si no).
     pub(super) fn available(&self, action: Action) -> bool {
+        if self.busy() && !action.is_view_only() {
+            return false;
+        }
         let layers = self.doc.layers.len();
         let active = self.doc.active;
         match action {
@@ -255,38 +268,34 @@ impl PyroApp {
 
     // ---------- Archivos ----------
 
-    pub(super) fn open_path(&mut self, path: PathBuf, _ctx: &egui::Context) {
-        match io::open_path(&path, &pyro_core::task::NoMonitor) {
-            Ok(opened) => {
-                let doc = opened.document;
-                let message = match opened.png_info.as_ref().filter(|i| i.is_fireworks()) {
-                    Some(info) => format!(
-                        "Archivo de Fireworks abierto como imagen aplanada ({} bloques privados, {} KB no editables).",
-                        info.private_chunks().count(),
-                        info.private_bytes() / 1024
-                    ),
-                    None => format!("Abierto: {} ({}×{} px)", path.display(), doc.width, doc.height),
-                };
-                self.info(message);
-                self.reset_document(doc);
-                self.png_info = opened.png_info;
-                self.settings.recent.push(path.clone());
-                self.save_settings();
-                self.source_path = Some(path);
-            }
-            Err(e) => {
-                // El documento actual no se toca: no hay nada que recuperar.
-                let reason = e
-                    .chain()
-                    .find_map(|cause| cause.downcast_ref::<std::io::Error>())
-                    .map_or_else(|| e.to_string(), |io| guard::io_reason(io, false));
-                self.fail(format!("No se pudo abrir «{}»: {reason}.", guard::short_name(&path)));
-            }
-        }
+    /// Abre `path` en segundo plano (ver [`PyroApp::start_open`]).
+    pub(super) fn open_path(&mut self, path: PathBuf, ctx: &egui::Context) {
+        self.start_open(path, ctx);
+    }
+
+    /// Termina de abrir: el documento ya está decodificado.
+    pub(super) fn finish_open(&mut self, path: PathBuf, opened: io::Opened) {
+        let doc = opened.document;
+        let message = match opened.png_info.as_ref().filter(|i| i.is_fireworks()) {
+            Some(info) => format!(
+                "Archivo de Fireworks abierto como imagen aplanada ({} bloques privados, {} KB no editables).{}",
+                info.private_chunks().count(),
+                info.private_bytes() / 1024,
+                if info.damaged() { " Sus datos de Fireworks están dañados." } else { "" }
+            ),
+            None => format!("Abierto: {} ({}×{} px)", path.display(), doc.width, doc.height),
+        };
+        self.info(message);
+        self.reset_document(doc);
+        self.png_info = opened.png_info;
+        self.settings.recent.push(path.clone());
+        self.save_settings();
+        self.source_path = Some(path);
     }
 
     pub(super) fn reset_document(&mut self, doc: Document) {
         self.doc = doc;
+        self.generation += 1;
         self.history.clear();
         self.drag = Drag::None;
         self.clone_source = None;
@@ -322,6 +331,9 @@ impl PyroApp {
     }
 
     pub(super) fn run(&mut self, action: Action, ctx: &egui::Context) {
+        if self.busy() && !action.is_view_only() {
+            return;
+        }
         if self.filter_dialog.is_some()
             && !matches!(
                 action,
@@ -495,6 +507,7 @@ impl eframe::App for PyroApp {
         for path in pyro_platform::open_files::take() {
             self.request(Pending::Open(path), ctx);
         }
+        self.poll_task();
         self.guard_close(ctx);
         self.handle_input(ctx);
         self.menu_bar(ctx);

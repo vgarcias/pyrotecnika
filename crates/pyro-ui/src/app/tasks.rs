@@ -1,0 +1,141 @@
+//! Tareas que cambian el documento y corren en segundo plano (abrir; en la
+//! fase 3 también los filtros). Mientras corren, la barra de estado muestra
+//! el progreso y «Cancelar», y la edición se bloquea; la vista sigue viva.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use eframe::egui;
+
+use pyro_core::task::Cancelled;
+use pyro_formats::io::{self, Opened, TooLarge};
+use pyro_services::jobs::{Job, JobError, JobPoll, Wake};
+
+use super::{guard, Action, PyroApp};
+use crate::design::widgets;
+
+pub(super) enum TaskKind {
+    Open(PathBuf),
+}
+
+pub(super) enum TaskOutput {
+    Opened(Opened),
+}
+
+pub(super) struct DocTask {
+    pub(super) kind: TaskKind,
+    pub(super) job: Job<TaskOutput>,
+    /// Documento sobre el que se lanzó (ver [`PyroApp::generation`]).
+    pub(super) generation: u64,
+}
+
+impl TaskKind {
+    fn label(&self) -> String {
+        match self {
+            TaskKind::Open(path) => format!("Abriendo «{}»…", guard::short_name(path)),
+        }
+    }
+}
+
+/// Despierta a la interfaz cuando la tarea avanza o termina.
+pub(super) fn wake(ctx: &egui::Context) -> Wake {
+    let ctx = ctx.clone();
+    Arc::new(move || ctx.request_repaint())
+}
+
+impl Action {
+    /// Acciones que no cambian el documento: siguen disponibles durante una
+    /// tarea (y Salir, que la cancela al cerrar).
+    pub(super) fn is_view_only(self) -> bool {
+        matches!(
+            self,
+            Action::ZoomIn
+                | Action::ZoomOut
+                | Action::Fit
+                | Action::ActualSize
+                | Action::SetTheme(_)
+                | Action::UiScaleUp
+                | Action::UiScaleDown
+                | Action::UiScaleReset
+                | Action::OpenPalette
+                | Action::OpenPreferences
+                | Action::Quit
+        )
+    }
+}
+
+/// Mensaje de un archivo que no se pudo abrir.
+fn open_error(path: &std::path::Path, e: &anyhow::Error) -> String {
+    if let Some(t) = e.downcast_ref::<TooLarge>() {
+        return t.to_string();
+    }
+    let reason = e
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .map_or_else(|| e.to_string(), |io| guard::io_reason(io, false));
+    format!("No se pudo abrir «{}»: {reason}.", guard::short_name(path))
+}
+
+impl PyroApp {
+    pub(super) fn busy(&self) -> bool {
+        self.task.is_some()
+    }
+
+    pub(super) fn start_task(&mut self, kind: TaskKind, job: Job<TaskOutput>) {
+        if let Some(old) = self.task.take() {
+            old.job.cancel();
+        }
+        self.task = Some(DocTask { kind, job, generation: self.generation });
+    }
+
+    pub(super) fn cancel_task(&mut self) {
+        if let Some(task) = &self.task {
+            task.job.cancel();
+        }
+    }
+
+    /// Lee y decodifica en segundo plano; el documento actual no se toca
+    /// hasta que termina bien.
+    pub(super) fn start_open(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let source = path.clone();
+        let job = Job::spawn(wake(ctx), move |monitor| match io::open_path(&source, monitor) {
+            Ok(opened) => Ok(TaskOutput::Opened(opened)),
+            Err(e) if e.downcast_ref::<Cancelled>().is_some() => Err(JobError::Cancelled),
+            Err(e) => Err(JobError::Failed(open_error(&source, &e))),
+        });
+        self.start_task(TaskKind::Open(path), job);
+    }
+
+    /// Recoge el resultado de la tarea, si terminó. Se descarta si entretanto
+    /// se abrió o creó otro documento.
+    pub(super) fn poll_task(&mut self) {
+        let Some(task) = &mut self.task else { return };
+        let result = task.job.poll();
+        if matches!(result, JobPoll::Running) {
+            return;
+        }
+        let Some(task) = self.task.take() else { return };
+        if task.generation != self.generation {
+            return;
+        }
+        match (result, task.kind) {
+            (JobPoll::Done(TaskOutput::Opened(opened)), TaskKind::Open(path)) => self.finish_open(path, opened),
+            (JobPoll::Failed(message), _) => self.fail(message),
+            (JobPoll::Cancelled, _) => self.info("Cancelado."),
+            (JobPoll::Running, _) => {}
+        }
+    }
+
+    /// Tarea en curso en la barra de estado: qué hace, cuánto lleva y
+    /// «Cancelar».
+    pub(super) fn task_status(&mut self, ui: &mut egui::Ui) {
+        let Some(task) = &self.task else { return };
+        ui.label(task.kind.label());
+        let progress = task.job.progress();
+        ui.add(egui::ProgressBar::new(progress.unwrap_or(0.0)).desired_width(160.0).animate(progress.is_none()));
+        if widgets::button(ui, "Cancelar").clicked() {
+            self.cancel_task();
+        }
+        ui.separator();
+    }
+}

@@ -19,6 +19,14 @@ impl PyroApp {
         if self.confirm.is_some() || self.prefs.is_some() || self.palette.is_some() || ctx.wants_keyboard_input() {
             return;
         }
+        // Esc cancela la tarea en curso si no hay ninguna ventana que lo use antes.
+        let windows = self.filter_dialog.is_some()
+            || self.export_dialog.is_some()
+            || self.new_dialog.is_some()
+            || self.update.is_some();
+        if self.busy() && !windows && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+            self.cancel_task();
+        }
         let pressed: Vec<(Chord, bool)> = ctx.input(|i| {
             i.events
                 .iter()

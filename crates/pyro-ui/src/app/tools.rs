@@ -125,7 +125,7 @@ impl PyroApp {
     }
 
     pub(super) fn begin_drag(&mut self, p: (f32, f32)) {
-        if !matches!(self.drag, Drag::None) {
+        if !matches!(self.drag, Drag::None) || self.busy() {
             return;
         }
         if self.tool.edits_pixels() {
@@ -252,6 +252,9 @@ impl PyroApp {
     }
 
     pub(super) fn click(&mut self, p: (f32, f32), modifiers: Modifiers, ctx: &egui::Context) {
+        if self.busy() {
+            return;
+        }
         match self.tool {
             Tool::Clone if modifiers.alt => {
                 self.clone_source = Some(p);

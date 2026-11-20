@@ -150,6 +150,7 @@ impl PyroApp {
                     ui.label("Cambios sin exportar");
                     ui.separator();
                 }
+                self.task_status(ui);
                 self.status_message(ui);
             });
         });
@@ -215,9 +216,12 @@ impl PyroApp {
         let frame = style::side_panel_frame(&ctx.style());
         egui::SidePanel::right("propiedades").resizable(true).default_width(280.0).frame(frame).show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                self.tool_options(ui);
-                ui.separator();
-                self.layers_ui(ui);
+                // Durante una tarea que cambia el documento, el panel no edita.
+                ui.add_enabled_ui(!self.busy(), |ui| {
+                    self.tool_options(ui);
+                    ui.separator();
+                    self.layers_ui(ui);
+                });
                 if let Some(info) = self.png_info.as_ref().filter(|i| i.is_fireworks()) {
                     ui.separator();
                     egui::CollapsingHeader::new("Archivo de Fireworks").default_open(true).show(ui, |ui| {

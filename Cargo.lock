@@ -2750,6 +2750,8 @@ dependencies = [
 name = "pyro-ui"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
+ "crc32fast",
  "eframe",
  "egui_kittest",
  "image",
