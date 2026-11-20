@@ -6,6 +6,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use eframe::egui;
+use image::RgbaImage;
+
+use pyro_core::filters::Filter;
 
 use pyro_core::task::Cancelled;
 use pyro_formats::io::{self, Opened, TooLarge};
@@ -16,10 +19,13 @@ use crate::design::widgets;
 
 pub(super) enum TaskKind {
     Open(PathBuf),
+    /// Filtro sin parámetros sobre la capa activa.
+    Filter(Filter),
 }
 
 pub(super) enum TaskOutput {
     Opened(Opened),
+    Filtered(RgbaImage),
 }
 
 pub(super) struct DocTask {
@@ -33,6 +39,7 @@ impl TaskKind {
     fn label(&self) -> String {
         match self {
             TaskKind::Open(path) => format!("Abriendo «{}»…", guard::short_name(path)),
+            TaskKind::Filter(filter) => format!("Aplicando «{}»…", filter.name()),
         }
     }
 }
@@ -106,6 +113,16 @@ impl PyroApp {
         self.start_task(TaskKind::Open(path), job);
     }
 
+    /// Aplica un filtro sin parámetros a la capa activa en segundo plano
+    /// (el paso de historial ya está puesto; se quita si se cancela).
+    pub(super) fn start_filter(&mut self, filter: Filter, source: Arc<RgbaImage>, ctx: &egui::Context) {
+        let sel = self.doc.selection.clone();
+        let job = Job::spawn(wake(ctx), move |monitor| {
+            Ok(TaskOutput::Filtered(filter.run(&source, sel.as_ref(), monitor)?))
+        });
+        self.start_task(TaskKind::Filter(filter), job);
+    }
+
     /// Recoge el resultado de la tarea, si terminó. Se descarta si entretanto
     /// se abrió o creó otro documento.
     pub(super) fn poll_task(&mut self) {
@@ -118,11 +135,28 @@ impl PyroApp {
         if task.generation != self.generation {
             return;
         }
+        let filtering = matches!(task.kind, TaskKind::Filter(_));
         match (result, task.kind) {
             (JobPoll::Done(TaskOutput::Opened(opened)), TaskKind::Open(path)) => self.finish_open(path, opened),
-            (JobPoll::Failed(message), _) => self.fail(message),
-            (JobPoll::Cancelled, _) => self.info("Cancelado."),
-            (JobPoll::Running, _) => {}
+            (JobPoll::Done(TaskOutput::Filtered(img)), TaskKind::Filter(filter)) => {
+                self.doc.active_layer_mut().pixels = Arc::new(img);
+                self.history.seal(&self.doc);
+                self.mark_dirty();
+                self.info(format!("{} aplicado.", filter.name()));
+            }
+            (JobPoll::Done(_), _) | (JobPoll::Running, _) => {}
+            (JobPoll::Failed(message), _) => {
+                if filtering {
+                    self.history.discard_last();
+                }
+                self.fail(message);
+            }
+            (JobPoll::Cancelled, _) => {
+                if filtering {
+                    self.history.discard_last();
+                }
+                self.info("Cancelado.");
+            }
         }
     }
 

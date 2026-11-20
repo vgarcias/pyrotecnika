@@ -172,3 +172,112 @@ fn nuevo_respeta_los_limites() {
     h.run_steps(2);
     assert_eq!((h.state().doc.width, h.state().doc.height), (800, 533));
 }
+
+// ---------- Filtros y exportar (tarea 8) ----------
+
+use pyro_core::filters::Filter;
+use pyro_core::task::NoMonitor;
+
+/// Avanza cuadros hasta que `done` se cumpla (como mucho 3 s).
+fn wait_until(h: &mut Harness<'static, PyroApp>, done: impl Fn(&PyroApp) -> bool) {
+    let start = Instant::now();
+    while !done(h.state()) && start.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(2));
+        h.run_steps(1);
+    }
+    assert!(done(h.state()), "no llegó a tiempo");
+}
+
+fn active_pixels(app: &PyroApp) -> image::RgbaImage {
+    (*app.doc.active_layer().pixels).clone()
+}
+
+#[test]
+fn vista_previa_solo_la_ultima() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    let backup = active_pixels(h.state());
+    h.state_mut().run(super::Action::Filter(Filter::GAUSSIAN_BLUR), &ctx);
+    h.run_steps(1);
+    for i in 0..20 {
+        let d = h.state_mut().filter_dialog.as_mut().unwrap();
+        d.filter = Filter::GaussianBlur { sigma: 1.0 + i as f32 * 0.5 };
+        d.dirty = true;
+        h.run_steps(1);
+    }
+    let last = Filter::GaussianBlur { sigma: 10.5 };
+    wait_until(&mut h, |a| a.filter_dialog.as_ref().is_some_and(|d| d.preview.is_none() && d.shown == Some(last)));
+    let sel = h.state().doc.selection.clone();
+    assert!(active_pixels(h.state()) == last.run(&backup, sel.as_ref(), &NoMonitor).unwrap());
+    h.get_by_label("Cancelar").click();
+    h.run_steps(2);
+    assert!(h.state().filter_dialog.is_none());
+    assert!(active_pixels(h.state()) == backup);
+}
+
+#[test]
+fn aplicar_espera_a_la_vista_previa() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    let backup = active_pixels(h.state());
+    h.state_mut().run(super::Action::Filter(Filter::GAUSSIAN_BLUR), &ctx);
+    h.run_steps(1);
+    let wanted = Filter::GaussianBlur { sigma: 6.0 };
+    {
+        let d = h.state_mut().filter_dialog.as_mut().unwrap();
+        d.filter = wanted;
+        d.dirty = true;
+    }
+    h.get_by_label("Aplicar").click();
+    wait_until(&mut h, |a| a.filter_dialog.is_none());
+    let sel = h.state().doc.selection.clone();
+    assert!(active_pixels(h.state()) == wanted.run(&backup, sel.as_ref(), &NoMonitor).unwrap());
+    h.state_mut().run(super::Action::Undo, &ctx);
+    assert!(active_pixels(h.state()) == backup);
+}
+
+#[test]
+fn invertir_en_segundo_plano() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    let backup = active_pixels(h.state());
+    h.state_mut().run(super::Action::Filter(Filter::Invert), &ctx);
+    assert!(h.state().busy());
+    wait_task(&mut h);
+    let sel = h.state().doc.selection.clone();
+    assert!(active_pixels(h.state()) == Filter::Invert.run(&backup, sel.as_ref(), &NoMonitor).unwrap());
+    assert_eq!(h.state().status.text, "Invertir colores aplicado.");
+    h.state_mut().run(super::Action::Undo, &ctx);
+    assert!(active_pixels(h.state()) == backup);
+}
+
+#[test]
+fn exportar_mientras_se_pinta() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    let before = h.state().doc.composite();
+    h.state_mut().run(super::Action::Export, &ctx);
+    h.run_steps(1);
+    h.state_mut().tool = Tool::Brush;
+    // Dentro de la selección de la escena (120..350 × 90..240).
+    h.state_mut().click((200.0, 150.0), Modifiers::NONE, &ctx);
+    assert!(h.state().doc.composite() != before, "el pincel no pintó con exportar abierto");
+    wait_until(&mut h, |a| a.export_dialog.as_ref().is_some_and(|d| d.bytes.is_some()));
+    let dlg = h.state().export_dialog.as_ref().unwrap();
+    assert!(*dlg.source == before);
+    let decoded = image::load_from_memory(dlg.bytes.as_ref().unwrap()).unwrap().to_rgba8();
+    assert!(decoded == before);
+}
+
+#[test]
+fn cancelar_exportacion() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    h.state_mut().run(super::Action::Export, &ctx);
+    h.run_steps(1);
+    h.state_mut().export_dialog.as_mut().unwrap().cancel_job();
+    h.run_steps(3);
+    let dlg = h.state().export_dialog.as_ref().expect("el diálogo sigue abierto");
+    assert!(dlg.bytes.is_none() && dlg.job.is_none());
+    assert!(h.query_by_label_contains("Cálculo cancelado").is_some());
+}

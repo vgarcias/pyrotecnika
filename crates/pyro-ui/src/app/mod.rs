@@ -26,12 +26,11 @@ mod updates;
 mod view;
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use eframe::egui::{self, TextureHandle, Vec2};
 
 use pyro_core::document::Document;
-use pyro_core::filters::{self, Filter};
+use pyro_core::filters::Filter;
 use pyro_core::history::History;
 use pyro_core::paint::BrushParams;
 use pyro_core::selection::{Mask, SelectMode};
@@ -415,12 +414,9 @@ impl PyroApp {
                 self.history.push(&self.doc);
                 let backup = self.doc.active_layer().pixels.clone();
                 if filter.has_params() {
-                    self.filter_dialog = Some(FilterDialog { filter, backup, dirty: true });
+                    self.filter_dialog = Some(FilterDialog::new(filter, backup));
                 } else {
-                    let out = filters::apply_masked(&backup, &filter.apply(&backup), self.doc.selection.as_ref());
-                    self.doc.active_layer_mut().pixels = Arc::new(out);
-                    self.dirty = Dirty::All;
-                    self.info(format!("{} aplicado.", filter.name()));
+                    self.start_filter(filter, backup, ctx);
                 }
             }
             Action::ZoomIn => self.zoom = (self.zoom * 1.25).min(64.0),

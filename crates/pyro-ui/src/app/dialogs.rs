@@ -1,25 +1,38 @@
 //! Ventanas de diálogo: filtros con vista previa, exportación y documento nuevo.
 
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
-use std::time::Duration;
 
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use image::RgbaImage;
 
-use pyro_core::filters::{self, Filter};
+use pyro_core::filters::Filter;
 use pyro_formats::export::{self, ExportFormat};
 use pyro_formats::fwpng::FwInfo;
 use pyro_formats::io;
+use pyro_services::jobs::{Job, JobError, JobPoll, Wake};
 
 use super::canvas_tiles::Dirty;
-use super::{format_size, guard, Pending, PyroApp, Tone};
+use super::{format_size, guard, tasks, Pending, PyroApp, Tone};
 use crate::design::widgets;
 
 pub(super) struct FilterDialog {
     pub(super) filter: Filter,
+    /// La capa activa antes del filtro (lo que restaura «Cancelar»).
     pub(super) backup: Arc<RgbaImage>,
+    /// Hay que calcular una vista previa nueva con `filter`.
     pub(super) dirty: bool,
+    /// Vista previa en curso y sus parámetros.
+    pub(super) preview: Option<(Filter, Job<RgbaImage>)>,
+    /// Parámetros de lo que muestra ahora el lienzo.
+    pub(super) shown: Option<Filter>,
+    /// Se pulsó «Aplicar»: se cierra en cuanto llegue la vista previa vigente.
+    pub(super) apply_requested: bool,
+}
+
+impl FilterDialog {
+    pub(super) fn new(filter: Filter, backup: Arc<RgbaImage>) -> Self {
+        Self { filter, backup, dirty: true, preview: None, shown: None, apply_requested: false }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -31,8 +44,6 @@ pub(super) enum ExportKind {
     WebP,
 }
 
-pub(super) type ExportResult = Result<(Vec<u8>, RgbaImage), String>;
-
 pub(super) struct ExportDialog {
     pub(super) source: Arc<RgbaImage>,
     pub(super) kind: ExportKind,
@@ -41,7 +52,9 @@ pub(super) struct ExportDialog {
     pub(super) webp_lossless: bool,
     pub(super) webp_quality: f32,
     pub(super) dirty: bool,
-    pub(super) job: Option<Receiver<ExportResult>>,
+    pub(super) job: Option<Job<(Vec<u8>, RgbaImage)>>,
+    /// Se canceló el último cálculo: no hay resultado hasta cambiar algo.
+    pub(super) cancelled: bool,
     pub(super) bytes: Option<Vec<u8>>,
     pub(super) error: Option<String>,
     /// Por qué falló el último intento de guardar, visible en el propio diálogo.
@@ -60,6 +73,7 @@ impl ExportDialog {
             webp_quality: 80.0,
             dirty: true,
             job: None,
+            cancelled: false,
             bytes: None,
             error: None,
             save_error: None,
@@ -77,19 +91,28 @@ impl ExportDialog {
         }
     }
 
-    pub(super) fn start_job(&mut self) {
-        let (tx, rx) = channel();
+    /// Codifica en segundo plano (lo anterior en curso se cancela).
+    pub(super) fn start_job(&mut self, wake: Wake) {
         let source = self.source.clone();
         let format = self.format();
-        std::thread::spawn(move || {
-            let result = export::encode(&source, format).map_err(|e| e.to_string()).and_then(|bytes| {
-                let preview = image::load_from_memory(&bytes).map_err(|e| e.to_string())?.to_rgba8();
-                Ok((bytes, preview))
-            });
-            let _ = tx.send(result);
-        });
-        self.job = Some(rx);
+        self.job = Some(Job::spawn(wake, move |ctx| {
+            let bytes = export::encode(&source, format).map_err(|e| JobError::Failed(e.to_string()))?;
+            ctx.check()?;
+            let preview = image::load_from_memory(&bytes).map_err(|e| JobError::Failed(e.to_string()))?.to_rgba8();
+            Ok((bytes, preview))
+        }));
         self.dirty = false;
+        self.cancelled = false;
+    }
+
+    /// Detiene el cálculo en curso; el diálogo queda abierto sin resultado.
+    pub(super) fn cancel_job(&mut self) {
+        if let Some(job) = self.job.take() {
+            job.cancel();
+            self.cancelled = true;
+            self.bytes = None;
+            self.preview = None;
+        }
     }
 }
 
@@ -158,6 +181,19 @@ impl PyroApp {
         let Some(dlg) = &mut self.filter_dialog else {
             return;
         };
+        if let Some((filter, job)) = &mut dlg.preview {
+            match job.poll() {
+                JobPoll::Running => {}
+                JobPoll::Done(img) => {
+                    let active = self.doc.active;
+                    self.doc.layers[active].pixels = Arc::new(img);
+                    self.dirty = Dirty::All;
+                    dlg.shown = Some(*filter);
+                    dlg.preview = None;
+                }
+                JobPoll::Failed(_) | JobPoll::Cancelled => dlg.preview = None,
+            }
+        }
         let mut apply = false;
         let mut cancel = false;
         let mut changed = false;
@@ -201,31 +237,44 @@ impl PyroApp {
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                apply = widgets::primary_button(ui, "Aplicar").clicked();
+                if dlg.apply_requested {
+                    ui.add_enabled_ui(false, |ui| widgets::primary_button(ui, "Aplicando…"));
+                } else {
+                    apply = widgets::primary_button(ui, "Aplicar").clicked();
+                }
                 cancel = widgets::button(ui, "Cancelar").clicked();
+                if dlg.preview.is_some() {
+                    ui.spinner();
+                }
             });
         });
         if changed {
             dlg.dirty = true;
         }
+        // Esc es «Cancelar» mientras el diálogo está abierto.
+        cancel |= ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        if apply {
+            dlg.apply_requested = true;
+        }
         if dlg.dirty {
-            let filtered = dlg.filter.apply(&dlg.backup);
-            let out = filters::apply_masked(&dlg.backup, &filtered, self.doc.selection.as_ref());
-            let active = self.doc.active;
-            self.doc.layers[active].pixels = Arc::new(out);
-            self.dirty = Dirty::All;
+            // Lo que se calculaba ya no vale: se suelta (y se cancela) y se lanza otra.
+            let (filter, source, sel) = (dlg.filter, Arc::clone(&dlg.backup), self.doc.selection.clone());
+            let job = Job::spawn(tasks::wake(ctx), move |monitor| Ok(filter.run(&source, sel.as_ref(), monitor)?));
+            dlg.preview = Some((filter, job));
             dlg.dirty = false;
         }
-        if apply {
-            let message = format!("{} aplicado.", dlg.filter.name());
-            self.info(message);
-            self.filter_dialog = None;
-        } else if cancel {
+        let current = dlg.filter;
+        let ready = dlg.preview.is_none() && dlg.shown == Some(current);
+        if cancel {
             let active = self.doc.active;
             self.doc.layers[active].pixels = Arc::clone(&dlg.backup);
             self.history.discard_last();
             self.filter_dialog = None;
             self.dirty = Dirty::All;
+        } else if dlg.apply_requested && ready {
+            self.history.seal(&self.doc);
+            self.filter_dialog = None;
+            self.info(format!("{} aplicado.", current.name()));
         }
     }
 
@@ -234,35 +283,30 @@ impl PyroApp {
         let Some(dlg) = &mut self.export_dialog else {
             return;
         };
-        if let Some(rx) = &dlg.job {
-            match rx.try_recv() {
-                Ok(result) => {
+        if let Some(job) = &mut dlg.job {
+            match job.poll() {
+                JobPoll::Running => {}
+                JobPoll::Done((bytes, preview)) => {
                     dlg.job = None;
-                    match result {
-                        Ok((bytes, preview)) => {
-                            let img = ColorImage::from_rgba_unmultiplied(
-                                [preview.width() as usize, preview.height() as usize],
-                                preview.as_raw(),
-                            );
-                            dlg.preview = Some(ctx.load_texture("vista-exportacion", img, TextureOptions::NEAREST));
-                            dlg.bytes = Some(bytes);
-                            dlg.error = None;
-                        }
-                        Err(e) => {
-                            dlg.bytes = None;
-                            dlg.error = Some(e);
-                        }
-                    }
+                    let img = ColorImage::from_rgba_unmultiplied(
+                        [preview.width() as usize, preview.height() as usize],
+                        preview.as_raw(),
+                    );
+                    dlg.preview = Some(ctx.load_texture("vista-exportacion", img, TextureOptions::NEAREST));
+                    dlg.bytes = Some(bytes);
+                    dlg.error = None;
                 }
-                Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(50)),
-                Err(TryRecvError::Disconnected) => {
+                JobPoll::Failed(e) => {
                     dlg.job = None;
-                    dlg.error = Some("La codificación terminó inesperadamente.".into());
+                    dlg.bytes = None;
+                    dlg.error = Some(e);
                 }
+                JobPoll::Cancelled => dlg.job = None,
             }
         }
-        if dlg.dirty && dlg.job.is_none() {
-            dlg.start_job();
+        if dlg.dirty {
+            // Un cambio de formato o calidad deja viejo lo que se esté calculando.
+            dlg.start_job(tasks::wake(ctx));
         }
 
         let mut open = true;
@@ -303,11 +347,15 @@ impl PyroApp {
 
             ui.separator();
             let raw = dlg.source.width() as usize * dlg.source.height() as usize * 4;
+            let mut cancel = false;
             if dlg.job.is_some() || dlg.dirty {
                 ui.horizontal(|ui| {
-                    ui.spinner();
+                    ui.add(egui::ProgressBar::new(0.0).desired_width(160.0).animate(true));
                     ui.label("Calculando…");
+                    cancel = widgets::button(ui, "Cancelar").clicked();
                 });
+            } else if dlg.cancelled {
+                ui.label("Cálculo cancelado. Cambia el formato o la calidad para calcularlo de nuevo.");
             } else if let Some(e) = &dlg.error {
                 guard::notice(ui, Tone::Error, &format!("No se pudo codificar la imagen: {e}."));
             } else if let Some(bytes) = &dlg.bytes {
@@ -324,6 +372,9 @@ impl PyroApp {
                 });
             }
             ui.separator();
+            if cancel {
+                dlg.cancel_job();
+            }
             let ready = dlg.bytes.is_some() && dlg.job.is_none() && !dlg.dirty;
             if let Some(e) = &dlg.save_error {
                 guard::notice(ui, Tone::Error, e);

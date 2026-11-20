@@ -155,7 +155,8 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
         let app = harness.state();
         let export_ready = app.export_dialog.as_ref().is_none_or(|d| d.bytes.is_some());
         let task_ready = app.task.as_ref().is_none_or(|t| t.job.progress().is_some());
-        if export_ready && task_ready {
+        let filter_ready = app.filter_dialog.as_ref().is_none_or(|d| d.preview.is_none() && d.shown.is_some());
+        if export_ready && task_ready && filter_ready {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
