@@ -14,8 +14,6 @@ image.workspace = true
 png.workspace = true
 color_quant.workspace = true
 webp.workspace = true
-
-[dev-dependencies]
 crc32fast.workspace = true
 
 [lints]

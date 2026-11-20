@@ -1,0 +1,31 @@
+[package]
+name = "pyro-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Espacio de trabajo propio: necesita nightly y no entra en el del proyecto.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pyro-core = { path = "../crates/pyro-core" }
+pyro-formats = { path = "../crates/pyro-formats" }
+
+[[bin]]
+name = "open_bytes"
+path = "fuzz_targets/open_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inspect_png"
+path = "fuzz_targets/inspect_png.rs"
+test = false
+doc = false
+bench = false

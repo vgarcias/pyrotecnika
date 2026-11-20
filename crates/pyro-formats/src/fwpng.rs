@@ -15,6 +15,8 @@ pub struct PngChunk {
     pub kind: String,
     pub length: u32,
     pub offset: usize,
+    /// El CRC guardado coincide con el contenido.
+    pub crc_ok: bool,
 }
 
 impl PngChunk {
@@ -45,6 +47,11 @@ impl FwInfo {
     pub fn private_bytes(&self) -> u64 {
         self.private_chunks().map(|c| c.length as u64).sum()
     }
+
+    /// Algún bloque privado (los datos de Fireworks) tiene el CRC mal.
+    pub fn damaged(&self) -> bool {
+        self.private_chunks().any(|c| !c.crc_ok)
+    }
 }
 
 pub fn inspect_png(bytes: &[u8]) -> Result<FwInfo> {
@@ -63,7 +70,9 @@ pub fn inspect_png(bytes: &[u8]) -> Result<FwInfo> {
         let end = pos.checked_add(12).and_then(|v| v.checked_add(length as usize)).filter(|&e| e <= bytes.len());
         let Some(end) = end else { bail!("Bloque {kind} truncado en el byte {pos}") };
         let is_end = kind == "IEND";
-        chunks.push(PngChunk { kind, length, offset: pos });
+        let stored = u32::from_be_bytes([bytes[end - 4], bytes[end - 3], bytes[end - 2], bytes[end - 1]]);
+        let crc_ok = crc32fast::hash(&bytes[pos + 4..end - 4]) == stored;
+        chunks.push(PngChunk { kind, length, offset: pos, crc_ok });
         pos = end;
         if is_end {
             break;

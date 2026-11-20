@@ -10,3 +10,8 @@
 *.new.png
 *.diff.png
 *.old.png
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+/fuzz/Cargo.lock

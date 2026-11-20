@@ -254,7 +254,7 @@ impl PyroApp {
     // ---------- Archivos ----------
 
     pub(super) fn open_path(&mut self, path: PathBuf, ctx: &egui::Context) {
-        match io::open_path(&path) {
+        match io::open_path(&path, &pyro_core::task::NoMonitor) {
             Ok(opened) => {
                 let max = ctx.input(|i| i.max_texture_side) as u32;
                 let doc = opened.document;

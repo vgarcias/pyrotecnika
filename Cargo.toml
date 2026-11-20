@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "app/pyrotecnika"]
+exclude = ["fuzz"]
 default-members = ["app/pyrotecnika"]
 
 [workspace.package]

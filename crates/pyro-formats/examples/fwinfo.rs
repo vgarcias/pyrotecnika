@@ -3,7 +3,7 @@
 
 fn main() -> anyhow::Result<()> {
     let path = std::env::args().nth(1).expect("uso: fwinfo <archivo.png>");
-    let opened = pyro_formats::io::open_path(path.as_ref())?;
+    let opened = pyro_formats::io::open_path(path.as_ref(), &pyro_core::task::NoMonitor)?;
     let doc = &opened.document;
     println!("Imagen: {}×{} px, capa \"{}\"", doc.width, doc.height, doc.layers[0].name);
     if let Some(info) = opened.png_info {
