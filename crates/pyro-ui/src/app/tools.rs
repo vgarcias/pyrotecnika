@@ -210,7 +210,12 @@ impl PyroApp {
 
     pub(super) fn end_drag(&mut self, modifiers: Modifiers) {
         let (w, h) = (self.doc.width, self.doc.height);
-        match std::mem::replace(&mut self.drag, Drag::None) {
+        let drag = std::mem::replace(&mut self.drag, Drag::None);
+        if matches!(drag, Drag::Paint { .. } | Drag::Move { .. }) {
+            // El trazo terminó: el historial se queda solo con los bloques tocados.
+            self.history.seal(&self.doc);
+        }
+        match drag {
             Drag::Shape { start, current } => {
                 let tiny = (start.0 - current.0).abs() < 1.0 && (start.1 - current.1).abs() < 1.0;
                 if tiny {
