@@ -9,6 +9,7 @@ use pyro_core::document::shift_pixels;
 use pyro_core::paint::{self, Stroke, StrokeKind};
 use pyro_core::selection::{Mask, SelectMode};
 
+use super::canvas_tiles::Dirty;
 use super::{icons, Action, PyroApp};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -162,7 +163,7 @@ impl PyroApp {
                 let mut stroke = Stroke::new(t.stroke_kind(), self.doc.active_layer().pixels.clone(), offset);
                 let active = self.doc.active;
                 stroke.dab(self.doc.layers[active].image_mut(), self.doc.selection.as_ref(), p.0, p.1, &self.brush);
-                self.canvas_dirty = true;
+                self.mark_dab(p, p);
                 Drag::Paint { stroke, last: p }
             }
             _ => Drag::None,
@@ -179,7 +180,7 @@ impl PyroApp {
                     let active = self.doc.active;
                     self.doc.layers[active].pixels = Arc::new(shift_pixels(base, base_sel.as_ref(), d.0, d.1));
                     self.doc.selection = base_sel.as_ref().map(|m| m.shifted(d.0, d.1));
-                    self.canvas_dirty = true;
+                    self.dirty = Dirty::All;
                     self.sel_dirty = true;
                 }
             }
@@ -193,6 +194,7 @@ impl PyroApp {
             Drag::Paint { stroke, last } => {
                 let spacing = (self.brush.radius * 0.25).max(1.0);
                 let active = self.doc.active;
+                let from = *last;
                 for pt in paint::stroke_points(*last, p, spacing) {
                     stroke.dab(
                         self.doc.layers[active].image_mut(),
@@ -203,9 +205,23 @@ impl PyroApp {
                     );
                     *last = pt;
                 }
-                self.canvas_dirty = true;
+                self.mark_dab(from, p);
             }
         }
+    }
+
+    /// Marca como sucio el rectángulo que cubren las pinceladas de `a` a `b`.
+    fn mark_dab(&mut self, a: (f32, f32), b: (f32, f32)) {
+        let r = self.brush.radius.max(0.5) + 1.0;
+        let lo = |v: f32| (v - r).floor().max(0.0) as u32;
+        let hi = |v: f32, max: u32| ((v + r).ceil().max(0.0) as u32).min(max);
+        let rect = Dirty::Rect {
+            x0: lo(a.0.min(b.0)),
+            y0: lo(a.1.min(b.1)),
+            x1: hi(a.0.max(b.0), self.doc.width),
+            y1: hi(a.1.max(b.1), self.doc.height),
+        };
+        self.dirty = self.dirty.union(rect);
     }
 
     pub(super) fn end_drag(&mut self, modifiers: Modifiers) {
@@ -269,12 +285,12 @@ impl PyroApp {
                         self.brush.color,
                         self.brush.opacity,
                     );
-                    self.canvas_dirty = true;
+                    self.dirty = Dirty::All;
                 }
             }
             Tool::Eyedropper => {
                 if let Some((x, y)) = self.inside(p) {
-                    let c = self.doc.composite().get_pixel(x, y).0;
+                    let c = self.doc.composite_pixel(x, y);
                     if c[3] > 0 {
                         self.brush.color = [c[0], c[1], c[2], 255];
                     }

@@ -4,6 +4,9 @@
 
 mod canvas;
 #[cfg(test)]
+mod canvas_tests;
+mod canvas_tiles;
+#[cfg(test)]
 mod commands_tests;
 mod dialogs;
 mod guard;
@@ -22,7 +25,7 @@ mod view;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eframe::egui::{self, TextureHandle, TextureOptions, Vec2};
+use eframe::egui::{self, TextureHandle, Vec2};
 
 use pyro_core::document::Document;
 use pyro_core::filters::{self, Filter};
@@ -32,6 +35,7 @@ use pyro_core::selection::{Mask, SelectMode};
 use pyro_formats::fwpng::FwInfo;
 use pyro_formats::io;
 
+use canvas_tiles::Dirty;
 use dialogs::{ExportDialog, FilterDialog, NewDialog};
 use guard::{Pending, Status, Tone};
 use tools::{Drag, Tool};
@@ -98,10 +102,9 @@ pub struct PyroApp {
     zoom: f32,
     pan: Vec2,
     fit_pending: bool,
-    canvas_tex: Option<TextureHandle>,
-    canvas_opts: TextureOptions,
-    canvas_dirty: bool,
-    sel_tex: Option<TextureHandle>,
+    canvas: canvas_tiles::Tiles,
+    dirty: Dirty,
+    sel_tiles: canvas_tiles::Tiles,
     sel_dirty: bool,
     checker: Option<TextureHandle>,
     hover_px: Option<(f32, f32)>,
@@ -171,10 +174,9 @@ impl PyroApp {
             zoom: 1.0,
             pan: Vec2::ZERO,
             fit_pending: true,
-            canvas_tex: None,
-            canvas_opts: TextureOptions::NEAREST,
-            canvas_dirty: true,
-            sel_tex: None,
+            canvas: canvas_tiles::Tiles::new("lienzo"),
+            dirty: Dirty::All,
+            sel_tiles: canvas_tiles::Tiles::new("seleccion"),
             sel_dirty: true,
             checker: None,
             hover_px: None,
@@ -253,21 +255,10 @@ impl PyroApp {
 
     // ---------- Archivos ----------
 
-    pub(super) fn open_path(&mut self, path: PathBuf, ctx: &egui::Context) {
+    pub(super) fn open_path(&mut self, path: PathBuf, _ctx: &egui::Context) {
         match io::open_path(&path, &pyro_core::task::NoMonitor) {
             Ok(opened) => {
-                let max = ctx.input(|i| i.max_texture_side) as u32;
                 let doc = opened.document;
-                if doc.width > max || doc.height > max {
-                    self.fail(format!(
-                        "«{}» mide {}×{} px y el máximo que admite esta tarjeta gráfica es {max} px por lado. \
-                         Redúcela en otro programa antes de abrirla.",
-                        guard::short_name(&path),
-                        doc.width,
-                        doc.height
-                    ));
-                    return;
-                }
                 let message = match opened.png_info.as_ref().filter(|i| i.is_fireworks()) {
                     Some(info) => format!(
                         "Archivo de Fireworks abierto como imagen aplanada ({} bloques privados, {} KB no editables).",
@@ -326,7 +317,7 @@ impl PyroApp {
         let before = self.doc.clone();
         if f(&mut self.doc) {
             self.history.push(&before);
-            self.canvas_dirty = true;
+            self.dirty = Dirty::All;
         }
     }
 
@@ -401,7 +392,7 @@ impl PyroApp {
                     }
                     self.history.push(&self.doc);
                     self.doc.clear_selected();
-                    self.canvas_dirty = true;
+                    self.dirty = Dirty::All;
                 }
             }
             Action::Filter(filter) => {
@@ -416,7 +407,7 @@ impl PyroApp {
                 } else {
                     let out = filters::apply_masked(&backup, &filter.apply(&backup), self.doc.selection.as_ref());
                     self.doc.active_layer_mut().pixels = Arc::new(out);
-                    self.canvas_dirty = true;
+                    self.dirty = Dirty::All;
                     self.info(format!("{} aplicado.", filter.name()));
                 }
             }
@@ -491,7 +482,7 @@ impl PyroApp {
     }
 
     pub(super) fn mark_dirty(&mut self) {
-        self.canvas_dirty = true;
+        self.dirty = Dirty::All;
         self.sel_dirty = true;
     }
 }
@@ -520,7 +511,7 @@ impl eframe::App for PyroApp {
         self.confirm_window(ctx);
         self.sync_title(ctx);
         crate::design::widgets::paint_focus_ring(ctx);
-        if self.canvas_dirty || self.sel_dirty {
+        if self.dirty != Dirty::None || self.sel_dirty {
             ctx.request_repaint();
         }
     }

@@ -4,6 +4,7 @@ use eframe::egui;
 
 use pyro_core::selection::SelectMode;
 
+use super::canvas_tiles::Dirty;
 use super::tools::Tool;
 use super::{format_size, guard, icons, updates, Action, PyroApp, Tone};
 use crate::commands::catalog;
@@ -347,7 +348,7 @@ impl PyroApp {
         if let Some(i) = toggle {
             self.history.push(&self.doc);
             self.doc.layers[i].visible = !self.doc.layers[i].visible;
-            self.canvas_dirty = true;
+            self.dirty = Dirty::All;
         }
         if let Some(i) = select {
             if !locked {
@@ -368,7 +369,7 @@ impl PyroApp {
         }
         if r.changed() {
             self.doc.layers[active].opacity = opacity / 100.0;
-            self.canvas_dirty = true;
+            self.dirty = Dirty::All;
         }
     }
 }

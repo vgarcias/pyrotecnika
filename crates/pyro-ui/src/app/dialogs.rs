@@ -11,6 +11,7 @@ use pyro_core::filters::{self, Filter};
 use pyro_formats::export::{self, ExportFormat};
 use pyro_formats::fwpng::FwInfo;
 
+use super::canvas_tiles::Dirty;
 use super::{format_size, guard, Pending, PyroApp, Tone};
 use crate::design::widgets;
 
@@ -211,7 +212,7 @@ impl PyroApp {
             let out = filters::apply_masked(&dlg.backup, &filtered, self.doc.selection.as_ref());
             let active = self.doc.active;
             self.doc.layers[active].pixels = Arc::new(out);
-            self.canvas_dirty = true;
+            self.dirty = Dirty::All;
             dlg.dirty = false;
         }
         if apply {
@@ -223,7 +224,7 @@ impl PyroApp {
             self.doc.layers[active].pixels = Arc::clone(&dlg.backup);
             self.history.discard_last();
             self.filter_dialog = None;
-            self.canvas_dirty = true;
+            self.dirty = Dirty::All;
         }
     }
 

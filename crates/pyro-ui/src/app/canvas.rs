@@ -72,17 +72,14 @@ impl PyroApp {
             self.origin(rect),
             Vec2::new(self.doc.width as f32, self.doc.height as f32) * self.zoom,
         );
-        let full_uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         if let Some(ch) = &self.checker {
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(canvas.width() / 16.0, canvas.height() / 16.0));
             painter.image(ch.id(), canvas, uv, Color32::WHITE);
         }
-        if let Some(t) = &self.canvas_tex {
-            painter.image(t.id(), canvas, full_uv, Color32::WHITE);
-        }
+        self.canvas.paint(&painter, canvas);
         painter.rect_stroke(canvas, 0.0, UiStroke::new(pal.stroke_width, pal.border_subtle), UiStrokeKind::Outside);
-        if let Some(t) = &self.sel_tex {
-            painter.image(t.id(), canvas, full_uv, Color32::WHITE);
+        if !self.sel_tiles.is_empty() {
+            self.sel_tiles.paint(&painter, canvas);
             if self.zoom < 1.0 {
                 if let Some((x0, y0, x1, y1)) = self.doc.selection.as_ref().and_then(Mask::bounds) {
                     let r = Rect::from_min_max(

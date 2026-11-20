@@ -4,6 +4,7 @@ use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, TextureOptions, Vec2};
 
 use pyro_core::selection::Mask;
 
+use super::canvas_tiles::Dirty;
 use super::PyroApp;
 use crate::design::tokens::{CHECKER_A, CHECKER_B, OVERLAY_DARK, OVERLAY_LIGHT};
 
@@ -39,23 +40,22 @@ impl PyroApp {
 
     pub(super) fn refresh_textures(&mut self, ctx: &egui::Context) {
         let opts = if self.zoom >= 1.0 { TextureOptions::NEAREST } else { TextureOptions::LINEAR };
-        if self.canvas_dirty || self.canvas_tex.is_none() || opts != self.canvas_opts {
-            let comp = self.doc.composite();
-            let img =
-                ColorImage::from_rgba_unmultiplied([comp.width() as usize, comp.height() as usize], comp.as_raw());
-            match &mut self.canvas_tex {
-                Some(t) => t.set(img, opts),
-                None => self.canvas_tex = Some(ctx.load_texture("lienzo", img, opts)),
-            }
-            self.canvas_opts = opts;
-            self.canvas_dirty = false;
-        }
+        let size = (self.doc.width, self.doc.height);
+        let doc = &self.doc;
+        self.canvas.update(ctx, size, opts, std::mem::replace(&mut self.dirty, Dirty::None), |x0, y0, x1, y1| {
+            let part = doc.composite_rect(x0, y0, x1, y1);
+            ColorImage::from_rgba_unmultiplied([part.width() as usize, part.height() as usize], part.as_raw())
+        });
         if self.sel_dirty {
-            self.sel_tex = self
-                .doc
-                .selection
-                .as_ref()
-                .map(|m| ctx.load_texture("seleccion", selection_overlay(m), TextureOptions::NEAREST));
+            match &self.doc.selection {
+                Some(m) => {
+                    let overlay = selection_overlay(m);
+                    self.sel_tiles.update(ctx, size, TextureOptions::NEAREST, Dirty::All, |x0, y0, x1, y1| {
+                        crop_color_image(&overlay, x0, y0, x1, y1)
+                    });
+                }
+                None => self.sel_tiles.clear(),
+            }
             self.sel_dirty = false;
         }
         if self.checker.is_none() {
@@ -70,6 +70,18 @@ impl PyroApp {
             self.checker = Some(ctx.load_texture("cuadricula", img, TextureOptions::NEAREST_REPEAT));
         }
     }
+}
+
+/// Rectángulo `x0..x1` × `y0..y1` de una imagen ya en memoria.
+fn crop_color_image(img: &ColorImage, x0: u32, y0: u32, x1: u32, y1: u32) -> ColorImage {
+    let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
+    let stride = img.size[0];
+    let mut pixels = Vec::with_capacity(w * h);
+    for y in y0 as usize..y1 as usize {
+        let start = y * stride + x0 as usize;
+        pixels.extend_from_slice(&img.pixels[start..start + w]);
+    }
+    ColorImage { size: [w, h], pixels }
 }
 
 /// Contorno de la selección con «hormigas» blancas y negras.
