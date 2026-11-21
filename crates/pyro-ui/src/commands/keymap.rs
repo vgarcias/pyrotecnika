@@ -117,9 +117,9 @@ impl Keymap {
     fn take(&mut self, id: &str, c: Chord) -> Vec<usize> {
         let Some(me) = index(id) else { return Vec::new() };
         let mut lost = Vec::new();
-        for j in 0..CATALOG.len() {
-            if j != me && !may_share(me, j, c) && self.bindings[j].contains(&c) {
-                self.bindings[j].retain(|x| *x != c);
+        for (j, list) in self.bindings.iter_mut().enumerate() {
+            if j != me && !may_share(me, j, c) && list.contains(&c) {
+                list.retain(|x| *x != c);
                 lost.push(j);
             }
         }

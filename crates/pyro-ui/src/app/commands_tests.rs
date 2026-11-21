@@ -81,10 +81,12 @@ fn ningun_atajo_con_un_campo_de_texto_enfocado() {
 #[test]
 fn el_menu_muestra_el_atajo_vigente() {
     let mut h = main_scene();
-    assert_eq!(h.state().menu_shortcut("file.export"), "Ctrl+Mayús+R");
+    // En macOS el menú muestra «⌘⇧R»; en Windows y Linux, «Ctrl+Mayús+R».
+    let label = |s: &str| Chord::parse(s).unwrap().label(crate::commands::is_mac());
+    assert_eq!(h.state().menu_shortcut("file.export"), label("Ctrl+Shift+R"));
     h.state_mut().keymap.assign("file.export", Chord::parse("Ctrl+E").unwrap());
     h.state_mut().keymap.remove("file.export", Chord::parse("Ctrl+Shift+R").unwrap());
-    assert_eq!(h.state().menu_shortcut("file.export"), "Ctrl+E");
+    assert_eq!(h.state().menu_shortcut("file.export"), label("Ctrl+E"));
     h.press_key_modifiers(ctrl(), Key::E);
     h.run_steps(2);
     assert!(h.state().export_dialog.is_some());
