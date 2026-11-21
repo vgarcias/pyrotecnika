@@ -281,3 +281,66 @@ fn cancelar_exportacion() {
     assert!(dlg.bytes.is_none() && dlg.job.is_none());
     assert!(h.query_by_label_contains("Cálculo cancelado").is_some());
 }
+
+// ---------- Arreglos de la revisión final ----------
+
+#[test]
+fn exportar_una_imagen_mayor_que_la_textura_maxima() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    h.state_mut().reset_document(Document::new(9000, 300, Some([10, 20, 30, 255])));
+    h.run_steps(2);
+    h.state_mut().run(super::Action::Export, &ctx);
+    wait_until(&mut h, |a| a.export_dialog.as_ref().is_some_and(|d| d.bytes.is_some()));
+    let max = ctx.input(|i| i.max_texture_side).min(8192);
+    let preview = h.state().export_dialog.as_ref().unwrap().preview.as_ref().expect("vista previa").size();
+    assert!(preview[0] <= max && preview[1] <= max, "{preview:?} > {max}");
+}
+
+/// Tarea de abrir que termina enseguida y avisa por `done` al acabar.
+fn quick_open(h: &mut Harness<'static, PyroApp>, path: PathBuf) -> std::sync::mpsc::Receiver<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let ctx = h.ctx.clone();
+    let source = path.clone();
+    let job: Job<TaskOutput> = Job::spawn(super::tasks::wake(&ctx), move |_| {
+        let opened = pyro_formats::io::open_path(&source, &NoMonitor)
+            .map_err(|e| pyro_services::jobs::JobError::Failed(e.to_string()))?;
+        let _ = tx.send(());
+        Ok(TaskOutput::Opened(opened))
+    });
+    h.state_mut().start_task(TaskKind::Open(path), job);
+    rx
+}
+
+#[test]
+fn esc_en_el_cuadro_del_resultado_no_lo_aplica() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = temp_png(dir.path(), 64, 32);
+    let mut h = main_scene();
+    let done = quick_open(&mut h, path);
+    done.recv().unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    h.press_key(Key::Escape);
+    h.run_steps(2);
+    assert_eq!((h.state().doc.width, h.state().doc.height), (800, 533));
+    assert!(!h.state().busy());
+}
+
+#[test]
+fn cancelar_no_espera_al_decodificador() {
+    let mut h = main_scene();
+    let ctx = h.ctx.clone();
+    // Un trabajo que no consulta la cancelación (como un decodificador).
+    let job: Job<TaskOutput> = Job::spawn(super::tasks::wake(&ctx), |_| {
+        std::thread::sleep(Duration::from_secs(3));
+        Err(pyro_services::jobs::JobError::Cancelled)
+    });
+    h.state_mut().start_task(TaskKind::Open(PathBuf::from("enorme.png")), job);
+    h.run_steps(1);
+    let start = Instant::now();
+    h.state_mut().cancel_task();
+    h.run_steps(1);
+    assert!(!h.state().busy(), "sigue ocupada tras cancelar");
+    assert!(start.elapsed() < Duration::from_millis(100));
+    assert_eq!(h.state().status.text, "Cancelado.");
+}

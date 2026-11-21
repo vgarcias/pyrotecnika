@@ -505,7 +505,6 @@ impl eframe::App for PyroApp {
         for path in pyro_platform::open_files::take() {
             self.request(Pending::Open(path), ctx);
         }
-        self.poll_task();
         self.guard_close(ctx);
         self.handle_input(ctx);
         self.menu_bar(ctx);
@@ -522,6 +521,9 @@ impl eframe::App for PyroApp {
         self.confirm_window(ctx);
         self.sync_title(ctx);
         crate::design::widgets::paint_focus_ring(ctx);
+        // Después de la entrada y la interfaz: un «Cancelar» o Esc de este
+        // mismo cuadro gana al resultado que acaba de llegar.
+        self.poll_task();
         if self.dirty != Dirty::None || self.sel_dirty {
             ctx.request_repaint();
         }

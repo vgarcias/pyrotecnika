@@ -60,6 +60,8 @@ pub(super) struct ExportDialog {
     /// Por qué falló el último intento de guardar, visible en el propio diálogo.
     pub(super) save_error: Option<String>,
     pub(super) preview: Option<TextureHandle>,
+    /// La vista previa muestra solo una parte (imagen mayor que la textura máxima).
+    pub(super) preview_cropped: bool,
 }
 
 impl ExportDialog {
@@ -78,6 +80,7 @@ impl ExportDialog {
             error: None,
             save_error: None,
             preview: None,
+            preview_cropped: false,
         }
     }
 
@@ -288,6 +291,16 @@ impl PyroApp {
                 JobPoll::Running => {}
                 JobPoll::Done((bytes, preview)) => {
                     dlg.job = None;
+                    // Una textura no puede pasar del máximo de la GPU: se muestra
+                    // la esquina superior izquierda al 100 %.
+                    let max = (ctx.input(|i| i.max_texture_side) as u32).min(8192);
+                    let (w, h) = (preview.width().min(max), preview.height().min(max));
+                    dlg.preview_cropped = (w, h) != preview.dimensions();
+                    let preview = if dlg.preview_cropped {
+                        image::imageops::crop_imm(&preview, 0, 0, w, h).to_image()
+                    } else {
+                        preview
+                    };
                     let img = ColorImage::from_rgba_unmultiplied(
                         [preview.width() as usize, preview.height() as usize],
                         preview.as_raw(),
@@ -366,7 +379,12 @@ impl PyroApp {
                 });
             }
             if let Some(tex) = &dlg.preview {
-                ui.label("Vista previa al 100 % (desplázate para revisar la calidad):");
+                ui.label(if dlg.preview_cropped {
+                    "Vista previa al 100 % de la esquina superior izquierda (la imagen es mayor que lo que \
+                     puede mostrar la tarjeta gráfica):"
+                } else {
+                    "Vista previa al 100 % (desplázate para revisar la calidad):"
+                });
                 egui::ScrollArea::both().max_height(340.0).max_width(440.0).show(ui, |ui| {
                     ui.add(egui::Image::from_texture(egui::load::SizedTexture::from_handle(tex)));
                 });

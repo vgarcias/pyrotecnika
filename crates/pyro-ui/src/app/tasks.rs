@@ -95,10 +95,16 @@ impl PyroApp {
         self.task = Some(DocTask { kind, job, generation: self.generation });
     }
 
+    /// Cancela al momento: se suelta la tarea (su resultado, si llega, se
+    /// descarta) sin esperar a que el hilo termine, que puede estar dentro de
+    /// un decodificador que no se interrumpe.
     pub(super) fn cancel_task(&mut self) {
-        if let Some(task) = &self.task {
-            task.job.cancel();
+        let Some(task) = self.task.take() else { return };
+        task.job.cancel();
+        if matches!(task.kind, TaskKind::Filter(_)) {
+            self.history.discard_last();
         }
+        self.info("Cancelado.");
     }
 
     /// Lee y decodifica en segundo plano; el documento actual no se toca
