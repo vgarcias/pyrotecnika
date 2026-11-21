@@ -10,53 +10,59 @@ use crate::design::tokens::{CHECKER_A, CHECKER_B, OVERLAY_DARK, OVERLAY_LIGHT};
 
 impl PyroApp {
     pub(super) fn origin(&self, rect: Rect) -> Pos2 {
-        let size = Vec2::new(self.doc.width as f32, self.doc.height as f32) * self.zoom;
-        rect.center() + self.pan - size / 2.0
+        let size = Vec2::new(self.tab.doc.width as f32, self.tab.doc.height as f32) * self.tab.zoom;
+        rect.center() + self.tab.pan - size / 2.0
     }
 
     pub(super) fn screen_to_img(&self, rect: Rect, p: Pos2) -> (f32, f32) {
         let o = self.origin(rect);
-        ((p.x - o.x) / self.zoom, (p.y - o.y) / self.zoom)
+        ((p.x - o.x) / self.tab.zoom, (p.y - o.y) / self.tab.zoom)
     }
 
     pub(super) fn img_to_screen(&self, rect: Rect, p: (f32, f32)) -> Pos2 {
-        self.origin(rect) + Vec2::new(p.0, p.1) * self.zoom
+        self.origin(rect) + Vec2::new(p.0, p.1) * self.tab.zoom
     }
 
     pub(super) fn zoom_at(&mut self, rect: Rect, anchor: Pos2, factor: f32) {
         let img = self.screen_to_img(rect, anchor);
-        self.zoom = (self.zoom * factor).clamp(0.02, 64.0);
+        self.tab.zoom = (self.tab.zoom * factor).clamp(0.02, 64.0);
         let moved = self.img_to_screen(rect, img);
-        self.pan += anchor - moved;
+        self.tab.pan += anchor - moved;
     }
 
     pub(super) fn fit(&mut self, rect: Rect) {
-        let zx = (rect.width() - 40.0).max(10.0) / self.doc.width as f32;
-        let zy = (rect.height() - 40.0).max(10.0) / self.doc.height as f32;
-        self.zoom = zx.min(zy).clamp(0.02, 1.0);
-        self.pan = Vec2::ZERO;
-        self.fit_pending = false;
+        let zx = (rect.width() - 40.0).max(10.0) / self.tab.doc.width as f32;
+        let zy = (rect.height() - 40.0).max(10.0) / self.tab.doc.height as f32;
+        self.tab.zoom = zx.min(zy).clamp(0.02, 1.0);
+        self.tab.pan = Vec2::ZERO;
+        self.tab.fit_pending = false;
     }
 
     pub(super) fn refresh_textures(&mut self, ctx: &egui::Context) {
-        let opts = if self.zoom >= 1.0 { TextureOptions::NEAREST } else { TextureOptions::LINEAR };
-        let size = (self.doc.width, self.doc.height);
-        let doc = &self.doc;
-        self.canvas.update(ctx, size, opts, std::mem::replace(&mut self.dirty, Dirty::None), |x0, y0, x1, y1| {
-            let part = doc.composite_rect(x0, y0, x1, y1);
-            ColorImage::from_rgba_unmultiplied([part.width() as usize, part.height() as usize], part.as_raw())
-        });
-        if self.sel_dirty {
-            match &self.doc.selection {
+        let opts = if self.tab.zoom >= 1.0 { TextureOptions::NEAREST } else { TextureOptions::LINEAR };
+        let size = (self.tab.doc.width, self.tab.doc.height);
+        let doc = &self.tab.doc;
+        self.tab.canvas.update(
+            ctx,
+            size,
+            opts,
+            std::mem::replace(&mut self.tab.dirty, Dirty::None),
+            |x0, y0, x1, y1| {
+                let part = doc.composite_rect(x0, y0, x1, y1);
+                ColorImage::from_rgba_unmultiplied([part.width() as usize, part.height() as usize], part.as_raw())
+            },
+        );
+        if self.tab.sel_dirty {
+            match &self.tab.doc.selection {
                 Some(m) => {
                     let overlay = selection_overlay(m);
-                    self.sel_tiles.update(ctx, size, TextureOptions::NEAREST, Dirty::All, |x0, y0, x1, y1| {
+                    self.tab.sel_tiles.update(ctx, size, TextureOptions::NEAREST, Dirty::All, |x0, y0, x1, y1| {
                         crop_color_image(&overlay, x0, y0, x1, y1)
                     });
                 }
-                None => self.sel_tiles.clear(),
+                None => self.tab.sel_tiles.clear(),
             }
-            self.sel_dirty = false;
+            self.tab.sel_dirty = false;
         }
         if self.checker.is_none() {
             let mut img = ColorImage::new([16, 16], CHECKER_A);

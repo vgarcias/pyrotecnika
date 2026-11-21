@@ -93,7 +93,7 @@ impl PyroApp {
     pub(super) fn update_window(&mut self, ctx: &egui::Context) {
         self.poll_update_jobs(ctx);
         // El diálogo de cambios sin exportar va primero; luego se vuelve aquí.
-        if self.confirm.is_some() || self.export_dialog.is_some() {
+        if self.confirm.is_some() || self.tab.export_dialog.is_some() {
             return;
         }
         let Some(state) = &self.update else {

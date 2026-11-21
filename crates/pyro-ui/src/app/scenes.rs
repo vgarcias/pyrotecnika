@@ -99,8 +99,8 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
     {
         let app = harness.state_mut();
         app.reset_document(sample_document());
-        app.history.push(&app.doc.clone());
-        app.history.mark_saved();
+        app.tab.history.push(&app.tab.doc.clone());
+        app.tab.history.mark_saved();
         app.theme = theme;
         app.ui_scale = scale;
     }
@@ -112,16 +112,17 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
     match which {
         Scene::Main => {}
         Scene::Export => {
-            app.export_dialog = Some(ExportDialog::new(app.doc.composite()));
+            app.tab.export_dialog = Some(ExportDialog::new(app.tab.doc.composite()));
         }
         Scene::Filter => app.run(Action::Filter(Filter::BRIGHTNESS_CONTRAST), &ctx),
         Scene::Confirm => {
-            app.history.push(&app.doc.clone());
+            app.tab.history.push(&app.tab.doc.clone());
             app.request(Pending::Quit, &ctx);
         }
         Scene::Updates => app.update = Some(UpdateState::UpToDate),
         Scene::LongNames => {
-            app.doc.layers[1].name = "Retoque del cielo con nubes de tormenta sobre el cenote, versión final 3".into();
+            app.tab.doc.layers[1].name =
+                "Retoque del cielo con nubes de tormenta sobre el cenote, versión final 3".into();
             app.warn(
                 "La capa «Fondo con la textura de piedra caliza del cenote, copia 2» está oculta. Muéstrala para editarla.",
             );
@@ -153,9 +154,9 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
     // que la captura muestre el tamaño y la vista previa.
     for _ in 0..200 {
         let app = harness.state();
-        let export_ready = app.export_dialog.as_ref().is_none_or(|d| d.bytes.is_some());
-        let task_ready = app.task.as_ref().is_none_or(|t| t.job.progress().is_some());
-        let filter_ready = app.filter_dialog.as_ref().is_none_or(|d| d.preview.is_none() && d.shown.is_some());
+        let export_ready = app.tab.export_dialog.as_ref().is_none_or(|d| d.bytes.is_some());
+        let task_ready = app.tab.task.as_ref().is_none_or(|t| t.job.progress().is_some());
+        let filter_ready = app.tab.filter_dialog.as_ref().is_none_or(|d| d.preview.is_none() && d.shown.is_some());
         if export_ready && task_ready && filter_ready {
             break;
         }

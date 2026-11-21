@@ -18,7 +18,7 @@ impl PyroApp {
         let ctx = ui.ctx().clone();
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Lienzo"));
-        if self.fit_pending && rect.width() > 50.0 {
+        if self.tab.fit_pending && rect.width() > 50.0 {
             self.fit(rect);
         }
 
@@ -34,10 +34,10 @@ impl PyroApp {
             || resp.dragged_by(PointerButton::Secondary)
             || (space && resp.dragged_by(PointerButton::Primary));
         if panning {
-            self.pan += resp.drag_delta();
+            self.tab.pan += resp.drag_delta();
         }
 
-        if self.filter_dialog.is_none() && !space {
+        if self.tab.filter_dialog.is_none() && !space {
             if resp.drag_started_by(PointerButton::Primary) {
                 if let Some(start) = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos()) {
                     let p = self.screen_to_img(rect, start);
@@ -70,18 +70,18 @@ impl PyroApp {
         painter.rect_filled(rect, 0.0, pal.bg_canvas);
         let canvas = Rect::from_min_size(
             self.origin(rect),
-            Vec2::new(self.doc.width as f32, self.doc.height as f32) * self.zoom,
+            Vec2::new(self.tab.doc.width as f32, self.tab.doc.height as f32) * self.tab.zoom,
         );
         if let Some(ch) = &self.checker {
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(canvas.width() / 16.0, canvas.height() / 16.0));
             painter.image(ch.id(), canvas, uv, Color32::WHITE);
         }
-        self.canvas.paint(&painter, canvas);
+        self.tab.canvas.paint(&painter, canvas);
         painter.rect_stroke(canvas, 0.0, UiStroke::new(pal.stroke_width, pal.border_subtle), UiStrokeKind::Outside);
-        if !self.sel_tiles.is_empty() {
-            self.sel_tiles.paint(&painter, canvas);
-            if self.zoom < 1.0 {
-                if let Some((x0, y0, x1, y1)) = self.doc.selection.as_ref().and_then(Mask::bounds) {
+        if !self.tab.sel_tiles.is_empty() {
+            self.tab.sel_tiles.paint(&painter, canvas);
+            if self.tab.zoom < 1.0 {
+                if let Some((x0, y0, x1, y1)) = self.tab.doc.selection.as_ref().and_then(Mask::bounds) {
                     let r = Rect::from_min_max(
                         self.img_to_screen(rect, (x0 as f32, y0 as f32)),
                         self.img_to_screen(rect, (x1 as f32, y1 as f32)),
@@ -91,7 +91,7 @@ impl PyroApp {
             }
         }
 
-        match &self.drag {
+        match &self.tab.drag {
             Drag::Shape { start, current } => {
                 let r = Rect::from_two_pos(self.img_to_screen(rect, *start), self.img_to_screen(rect, *current));
                 if self.tool == Tool::Ellipse {
@@ -117,17 +117,17 @@ impl PyroApp {
         // El anillo del pincel sustituye al cursor solo si se ve: con un pincel
         // pequeño y poco zoom mediría menos de un píxel y el puntero se perdería.
         const MIN_RING: f32 = 4.0;
-        let ring = self.brush.radius * self.zoom;
-        let blocked = self.tool.edits_pixels() && self.filter_dialog.is_none() && self.layer_block().is_some();
+        let ring = self.brush.radius * self.tab.zoom;
+        let blocked = self.tool.edits_pixels() && self.tab.filter_dialog.is_none() && self.layer_block().is_some();
         let show_ring = self.tool.is_brush() && !space && !blocked && ring >= MIN_RING;
         if let (true, Some(h)) = (show_ring, resp.hover_pos()) {
             painter.circle_stroke(h, ring, UiStroke::new(1.0_f32, OVERLAY_LIGHT));
             painter.circle_stroke(h, ring + 1.0, UiStroke::new(1.0_f32, OVERLAY_DARK));
         }
         if self.tool == Tool::Clone {
-            if let Some(src) = self.clone_source {
+            if let Some(src) = self.tab.clone_source {
                 // Durante el trazo, la marca de origen sigue al pincel.
-                let following = match (&self.drag, self.clone_stroke_offset, resp.hover_pos()) {
+                let following = match (&self.tab.drag, self.tab.clone_stroke_offset, resp.hover_pos()) {
                     (Drag::Paint { .. }, Some(o), Some(h)) => {
                         let cur = self.screen_to_img(rect, h);
                         Some((cur.0 + o.0, cur.1 + o.1))

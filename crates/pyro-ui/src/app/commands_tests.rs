@@ -28,7 +28,7 @@ fn exportar_con_el_atajo_de_fireworks() {
     let mut h = main_scene();
     h.press_key_modifiers(ctrl() | Modifiers::SHIFT, Key::R);
     h.run_steps(2);
-    assert!(h.state().export_dialog.is_some());
+    assert!(h.state().tab.export_dialog.is_some());
 }
 
 #[test]
@@ -36,20 +36,20 @@ fn ctrl_e_ya_no_exporta() {
     let mut h = main_scene();
     h.press_key_modifiers(ctrl(), Key::E);
     h.run_steps(2);
-    assert!(h.state().export_dialog.is_none());
+    assert!(h.state().tab.export_dialog.is_none());
 }
 
 #[test]
 fn ctrl_mas_del_teclado_espanol_acerca() {
     let mut h = main_scene();
-    let z0 = h.state().zoom;
+    let z0 = h.state().tab.zoom;
     h.press_key_modifiers(ctrl(), Key::Plus);
     h.run_steps(2);
-    let z1 = h.state().zoom;
+    let z1 = h.state().tab.zoom;
     assert!(z1 > z0, "Ctrl++ no acercó: {z0} → {z1}");
     h.press_key_modifiers(ctrl(), Key::Equals);
     h.run_steps(2);
-    assert!(h.state().zoom > z1, "Ctrl+= no acercó");
+    assert!(h.state().tab.zoom > z1, "Ctrl+= no acercó");
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn ningun_atajo_con_un_campo_de_texto_enfocado() {
     h.press_key_modifiers(ctrl() | Modifiers::ALT, Key::E);
     h.press_key(Key::E);
     h.run_steps(2);
-    assert_eq!(h.state().doc.layers.len(), 2);
+    assert_eq!(h.state().tab.doc.layers.len(), 2);
     assert_eq!(h.state().tool, Tool::Brush);
 }
 
@@ -89,7 +89,7 @@ fn el_menu_muestra_el_atajo_vigente() {
     assert_eq!(h.state().menu_shortcut("file.export"), label("Ctrl+E"));
     h.press_key_modifiers(ctrl(), Key::E);
     h.run_steps(2);
-    assert!(h.state().export_dialog.is_some());
+    assert!(h.state().tab.export_dialog.is_some());
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn reciente_que_ya_no_existe() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = main_scene();
     let ctx = h.ctx.clone();
-    let size = (h.state().doc.width, h.state().doc.height);
+    let size = (h.state().tab.doc.width, h.state().tab.doc.height);
     {
         let app = h.state_mut();
         app.settings.recent.files = vec![dir.path().join("borrado.png")];
@@ -106,7 +106,7 @@ fn reciente_que_ya_no_existe() {
     let app = h.state();
     assert!(app.settings.recent.files.is_empty());
     assert!(matches!(app.status.tone, super::Tone::Warn));
-    assert_eq!((app.doc.width, app.doc.height), size);
+    assert_eq!((app.tab.doc.width, app.tab.doc.height), size);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn ctrl_k_busca_y_ejecuta() {
     h.press_key(Key::Enter);
     h.run_steps(3);
     assert!(h.state().palette.is_none());
-    assert!(h.state().filter_dialog.is_some());
+    assert!(h.state().tab.filter_dialog.is_some());
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn reasignar_un_atajo() {
     assert!(h.state().prefs.is_none());
     h.press_key_modifiers(ctrl() | Modifiers::SHIFT, Key::E);
     h.run_steps(2);
-    assert!(h.state().export_dialog.is_some());
+    assert!(h.state().tab.export_dialog.is_some());
 }
 
 #[test]
@@ -259,10 +259,10 @@ fn esc_cancela_la_captura_sin_cerrar() {
 #[test]
 fn la_captura_no_ejecuta_el_atajo() {
     let mut h = capturing_export();
-    let before = h.state().history.can_undo();
+    let before = h.state().tab.history.can_undo();
     h.press_key_modifiers(ctrl(), Key::Z);
     h.run_steps(2);
-    assert_eq!(h.state().history.can_undo(), before);
+    assert_eq!(h.state().tab.history.can_undo(), before);
     assert!(h.query_by_label_contains("ya lo usa «Deshacer»").is_some());
 }
 

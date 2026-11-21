@@ -130,7 +130,7 @@ impl PyroApp {
     /// Motivo por el que no se puede editar la capa activa, si lo hay:
     /// pintar o filtrar lo que no se ve parece no hacer nada.
     pub(super) fn layer_block(&self) -> Option<String> {
-        let layer = self.doc.active_layer();
+        let layer = self.tab.doc.active_layer();
         if !layer.visible {
             Some(format!("La capa «{}» está oculta. Muéstrala para editarla.", layer.name))
         } else if layer.opacity <= 0.0 {
@@ -144,7 +144,7 @@ impl PyroApp {
 
     /// Ejecuta la acción o, si hay cambios sin exportar, pide confirmación.
     pub(super) fn request(&mut self, pending: Pending, ctx: &egui::Context) {
-        if self.history.is_modified() {
+        if self.tab.history.is_modified() {
             self.confirm = Some(pending);
             self.confirm_focus = true;
         } else {
@@ -172,7 +172,7 @@ impl PyroApp {
     /// Intercepta el cierre de la ventana (botón, Alt+F4, Archivo › Salir).
     pub(super) fn guard_close(&mut self, ctx: &egui::Context) {
         let requested = ctx.input(|i| i.viewport().close_requested());
-        if requested && !self.closing && self.history.is_modified() {
+        if requested && !self.closing && self.tab.history.is_modified() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Pending::Quit);
             self.confirm_focus = true;
@@ -181,8 +181,8 @@ impl PyroApp {
 
     /// Título de la ventana: archivo abierto y marca de cambios sin exportar.
     pub(super) fn sync_title(&mut self, ctx: &egui::Context) {
-        let name = self.source_path.as_deref().map_or_else(|| "Sin título".to_string(), short_name);
-        let mark = if self.history.is_modified() { "• " } else { "" };
+        let name = self.tab.source_path.as_deref().map_or_else(|| "Sin título".to_string(), short_name);
+        let mark = if self.tab.history.is_modified() { "• " } else { "" };
         let title = format!("{mark}{name} - Pyrotecnika");
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
@@ -192,7 +192,7 @@ impl PyroApp {
 
     /// Qué ocurrirá después de guardar la exportación, si hay algo pendiente.
     pub(super) fn after_export_hint(&self) -> Option<String> {
-        Some(match self.after_export.as_ref()? {
+        Some(match self.tab.after_export.as_ref()? {
             Pending::Open(path) => format!("Después de guardar se abrirá «{}».", short_name(path)),
             Pending::New { .. } => "Después de guardar se creará el documento nuevo.".into(),
             Pending::Quit => "Después de guardar se cerrará Pyrotecnika.".into(),
@@ -225,7 +225,7 @@ impl PyroApp {
                 ("¿Reiniciar y descartar los cambios?".to_string(), "Si reinicias ahora, esos cambios se pierden.")
             }
         };
-        let layers = self.doc.layers.len();
+        let layers = self.tab.doc.layers.len();
         let focus = std::mem::take(&mut self.confirm_focus);
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::new("confirmar-descartar")).show(ctx, |ui| {
@@ -271,8 +271,8 @@ impl PyroApp {
             Some(Choice::Export) => {
                 let pending = self.confirm.take();
                 self.run(Action::Export, ctx);
-                if self.export_dialog.is_some() {
-                    self.after_export = pending;
+                if self.tab.export_dialog.is_some() {
+                    self.tab.after_export = pending;
                 }
             }
         }

@@ -85,24 +85,24 @@ fn open_error(path: &std::path::Path, e: &anyhow::Error) -> String {
 
 impl PyroApp {
     pub(super) fn busy(&self) -> bool {
-        self.task.is_some()
+        self.tab.task.is_some()
     }
 
     pub(super) fn start_task(&mut self, kind: TaskKind, job: Job<TaskOutput>) {
-        if let Some(old) = self.task.take() {
+        if let Some(old) = self.tab.task.take() {
             old.job.cancel();
         }
-        self.task = Some(DocTask { kind, job, generation: self.generation });
+        self.tab.task = Some(DocTask { kind, job, generation: self.tab.generation });
     }
 
     /// Cancela al momento: se suelta la tarea (su resultado, si llega, se
     /// descarta) sin esperar a que el hilo termine, que puede estar dentro de
     /// un decodificador que no se interrumpe.
     pub(super) fn cancel_task(&mut self) {
-        let Some(task) = self.task.take() else { return };
+        let Some(task) = self.tab.task.take() else { return };
         task.job.cancel();
         if matches!(task.kind, TaskKind::Filter(_)) {
-            self.history.discard_last();
+            self.tab.history.discard_last();
         }
         self.info("Cancelado.");
     }
@@ -122,7 +122,7 @@ impl PyroApp {
     /// Aplica un filtro sin parámetros a la capa activa en segundo plano
     /// (el paso de historial ya está puesto; se quita si se cancela).
     pub(super) fn start_filter(&mut self, filter: Filter, source: Arc<RgbaImage>, ctx: &egui::Context) {
-        let sel = self.doc.selection.clone();
+        let sel = self.tab.doc.selection.clone();
         let job = Job::spawn(wake(ctx), move |monitor| {
             Ok(TaskOutput::Filtered(filter.run(&source, sel.as_ref(), monitor)?))
         });
@@ -132,34 +132,34 @@ impl PyroApp {
     /// Recoge el resultado de la tarea, si terminó. Se descarta si entretanto
     /// se abrió o creó otro documento.
     pub(super) fn poll_task(&mut self) {
-        let Some(task) = &mut self.task else { return };
+        let Some(task) = &mut self.tab.task else { return };
         let result = task.job.poll();
         if matches!(result, JobPoll::Running) {
             return;
         }
-        let Some(task) = self.task.take() else { return };
-        if task.generation != self.generation {
+        let Some(task) = self.tab.task.take() else { return };
+        if task.generation != self.tab.generation {
             return;
         }
         let filtering = matches!(task.kind, TaskKind::Filter(_));
         match (result, task.kind) {
             (JobPoll::Done(TaskOutput::Opened(opened)), TaskKind::Open(path)) => self.finish_open(path, opened),
             (JobPoll::Done(TaskOutput::Filtered(img)), TaskKind::Filter(filter)) => {
-                self.doc.active_layer_mut().pixels = Arc::new(img);
-                self.history.seal(&self.doc);
+                self.tab.doc.active_layer_mut().pixels = Arc::new(img);
+                self.tab.history.seal(&self.tab.doc);
                 self.mark_dirty();
                 self.info(format!("{} aplicado.", filter.name()));
             }
             (JobPoll::Done(_), _) | (JobPoll::Running, _) => {}
             (JobPoll::Failed(message), _) => {
                 if filtering {
-                    self.history.discard_last();
+                    self.tab.history.discard_last();
                 }
                 self.fail(message);
             }
             (JobPoll::Cancelled, _) => {
                 if filtering {
-                    self.history.discard_last();
+                    self.tab.history.discard_last();
                 }
                 self.info("Cancelado.");
             }
@@ -169,7 +169,7 @@ impl PyroApp {
     /// Tarea en curso en la barra de estado: qué hace, cuánto lleva y
     /// «Cancelar».
     pub(super) fn task_status(&mut self, ui: &mut egui::Ui) {
-        let Some(task) = &self.task else { return };
+        let Some(task) = &self.tab.task else { return };
         ui.label(task.kind.label());
         let progress = task.job.progress();
         ui.add(egui::ProgressBar::new(progress.unwrap_or(0.0)).desired_width(160.0).animate(progress.is_none()));

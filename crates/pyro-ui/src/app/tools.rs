@@ -104,8 +104,8 @@ impl PyroApp {
         } else {
             self.select_mode
         };
-        self.history.push(&self.doc);
-        let result = match (mode, self.doc.selection.take()) {
+        self.tab.history.push(&self.tab.doc);
+        let result = match (mode, self.tab.doc.selection.take()) {
             (SelectMode::Replace, _) | (SelectMode::Add, None) => Some(mask),
             (_, None) => None,
             (mode, Some(mut current)) => {
@@ -113,19 +113,19 @@ impl PyroApp {
                 Some(current)
             }
         };
-        self.doc.selection = result.filter(|m| !m.is_empty());
-        self.sel_dirty = true;
+        self.tab.doc.selection = result.filter(|m| !m.is_empty());
+        self.tab.sel_dirty = true;
     }
 
     // ---------- Herramientas sobre el lienzo ----------
 
     pub(super) fn inside(&self, p: (f32, f32)) -> Option<(u32, u32)> {
-        (p.0 >= 0.0 && p.1 >= 0.0 && p.0 < self.doc.width as f32 && p.1 < self.doc.height as f32)
+        (p.0 >= 0.0 && p.1 >= 0.0 && p.0 < self.tab.doc.width as f32 && p.1 < self.tab.doc.height as f32)
             .then_some((p.0 as u32, p.1 as u32))
     }
 
     pub(super) fn begin_drag(&mut self, p: (f32, f32)) {
-        if !matches!(self.drag, Drag::None) || self.busy() {
+        if !matches!(self.tab.drag, Drag::None) || self.busy() {
             return;
         }
         if self.tool.edits_pixels() {
@@ -134,12 +134,12 @@ impl PyroApp {
                 return;
             }
         }
-        self.drag = match self.tool {
+        self.tab.drag = match self.tool {
             Tool::Move => {
-                self.history.push(&self.doc);
+                self.tab.history.push(&self.tab.doc);
                 Drag::Move {
-                    base: self.doc.active_layer().pixels.clone(),
-                    base_sel: self.doc.selection.clone(),
+                    base: self.tab.doc.active_layer().pixels.clone(),
+                    base_sel: self.tab.doc.selection.clone(),
                     start: p,
                     last: (0, 0),
                 }
@@ -148,7 +148,7 @@ impl PyroApp {
             Tool::Lasso => Drag::Lasso { points: vec![p] },
             t if t.is_brush() => {
                 let offset = if t == Tool::Clone {
-                    match self.clone_source {
+                    match self.tab.clone_source {
                         Some(src) => (src.0 - p.0, src.1 - p.1),
                         None => {
                             self.warn("Tampón: primero Alt+clic para fijar el punto de origen.");
@@ -158,11 +158,17 @@ impl PyroApp {
                 } else {
                     (0.0, 0.0)
                 };
-                self.history.push(&self.doc);
-                self.clone_stroke_offset = (t == Tool::Clone).then_some(offset);
-                let mut stroke = Stroke::new(t.stroke_kind(), self.doc.active_layer().pixels.clone(), offset);
-                let active = self.doc.active;
-                stroke.dab(self.doc.layers[active].image_mut(), self.doc.selection.as_ref(), p.0, p.1, &self.brush);
+                self.tab.history.push(&self.tab.doc);
+                self.tab.clone_stroke_offset = (t == Tool::Clone).then_some(offset);
+                let mut stroke = Stroke::new(t.stroke_kind(), self.tab.doc.active_layer().pixels.clone(), offset);
+                let active = self.tab.doc.active;
+                stroke.dab(
+                    self.tab.doc.layers[active].image_mut(),
+                    self.tab.doc.selection.as_ref(),
+                    p.0,
+                    p.1,
+                    &self.brush,
+                );
                 self.mark_dab(p, p);
                 Drag::Paint { stroke, last: p }
             }
@@ -171,17 +177,17 @@ impl PyroApp {
     }
 
     pub(super) fn continue_drag(&mut self, p: (f32, f32)) {
-        match &mut self.drag {
+        match &mut self.tab.drag {
             Drag::None => {}
             Drag::Move { base, base_sel, start, last } => {
                 let d = ((p.0 - start.0).round() as i32, (p.1 - start.1).round() as i32);
                 if d != *last {
                     *last = d;
-                    let active = self.doc.active;
-                    self.doc.layers[active].pixels = Arc::new(shift_pixels(base, base_sel.as_ref(), d.0, d.1));
-                    self.doc.selection = base_sel.as_ref().map(|m| m.shifted(d.0, d.1));
-                    self.dirty = Dirty::All;
-                    self.sel_dirty = true;
+                    let active = self.tab.doc.active;
+                    self.tab.doc.layers[active].pixels = Arc::new(shift_pixels(base, base_sel.as_ref(), d.0, d.1));
+                    self.tab.doc.selection = base_sel.as_ref().map(|m| m.shifted(d.0, d.1));
+                    self.tab.dirty = Dirty::All;
+                    self.tab.sel_dirty = true;
                 }
             }
             Drag::Shape { current, .. } => *current = p,
@@ -193,12 +199,12 @@ impl PyroApp {
             }
             Drag::Paint { stroke, last } => {
                 let spacing = (self.brush.radius * 0.25).max(1.0);
-                let active = self.doc.active;
+                let active = self.tab.doc.active;
                 let from = *last;
                 for pt in paint::stroke_points(*last, p, spacing) {
                     stroke.dab(
-                        self.doc.layers[active].image_mut(),
-                        self.doc.selection.as_ref(),
+                        self.tab.doc.layers[active].image_mut(),
+                        self.tab.doc.selection.as_ref(),
                         pt.0,
                         pt.1,
                         &self.brush,
@@ -218,18 +224,18 @@ impl PyroApp {
         let rect = Dirty::Rect {
             x0: lo(a.0.min(b.0)),
             y0: lo(a.1.min(b.1)),
-            x1: hi(a.0.max(b.0), self.doc.width),
-            y1: hi(a.1.max(b.1), self.doc.height),
+            x1: hi(a.0.max(b.0), self.tab.doc.width),
+            y1: hi(a.1.max(b.1), self.tab.doc.height),
         };
-        self.dirty = self.dirty.union(rect);
+        self.tab.dirty = self.tab.dirty.union(rect);
     }
 
     pub(super) fn end_drag(&mut self, modifiers: Modifiers) {
-        let (w, h) = (self.doc.width, self.doc.height);
-        let drag = std::mem::replace(&mut self.drag, Drag::None);
+        let (w, h) = (self.tab.doc.width, self.tab.doc.height);
+        let drag = std::mem::replace(&mut self.tab.drag, Drag::None);
         if matches!(drag, Drag::Paint { .. } | Drag::Move { .. }) {
             // El trazo terminó: el historial se queda solo con los bloques tocados.
-            self.history.seal(&self.doc);
+            self.tab.history.seal(&self.tab.doc);
         }
         match drag {
             Drag::Shape { start, current } => {
@@ -257,7 +263,7 @@ impl PyroApp {
         }
         match self.tool {
             Tool::Clone if modifiers.alt => {
-                self.clone_source = Some(p);
+                self.tab.clone_source = Some(p);
                 self.info(format!("Origen del tampón: {:.0}, {:.0}", p.0, p.1));
             }
             t if t.is_brush() => {
@@ -266,8 +272,13 @@ impl PyroApp {
             }
             Tool::Wand => {
                 if let Some((x, y)) = self.inside(p) {
-                    let mask =
-                        Mask::magic_wand(&self.doc.active_layer().pixels, x, y, self.tolerance, self.wand_contiguous);
+                    let mask = Mask::magic_wand(
+                        &self.tab.doc.active_layer().pixels,
+                        x,
+                        y,
+                        self.tolerance,
+                        self.wand_contiguous,
+                    );
                     self.apply_selection(mask, modifiers);
                 }
             }
@@ -277,23 +288,23 @@ impl PyroApp {
                     return;
                 }
                 if let Some((x, y)) = self.inside(p) {
-                    self.history.push(&self.doc);
-                    let active = self.doc.active;
+                    self.tab.history.push(&self.tab.doc);
+                    let active = self.tab.doc.active;
                     paint::flood_fill(
-                        self.doc.layers[active].image_mut(),
-                        self.doc.selection.as_ref(),
+                        self.tab.doc.layers[active].image_mut(),
+                        self.tab.doc.selection.as_ref(),
                         x,
                         y,
                         self.tolerance,
                         self.brush.color,
                         self.brush.opacity,
                     );
-                    self.dirty = Dirty::All;
+                    self.tab.dirty = Dirty::All;
                 }
             }
             Tool::Eyedropper => {
                 if let Some((x, y)) = self.inside(p) {
-                    let c = self.doc.composite_pixel(x, y);
+                    let c = self.tab.doc.composite_pixel(x, y);
                     if c[3] > 0 {
                         self.brush.color = [c[0], c[1], c[2], 255];
                     }

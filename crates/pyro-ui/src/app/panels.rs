@@ -138,15 +138,15 @@ impl PyroApp {
     pub(super) fn status_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("estado").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.monospace(format!("{}×{} px", self.doc.width, self.doc.height));
+                ui.monospace(format!("{}×{} px", self.tab.doc.width, self.tab.doc.height));
                 ui.separator();
-                ui.monospace(format!("{:.0} %", self.zoom * 100.0));
+                ui.monospace(format!("{:.0} %", self.tab.zoom * 100.0));
                 if let Some((x, y)) = self.hover_px.and_then(|p| self.inside(p)) {
                     ui.separator();
                     ui.monospace(format!("x {x}, y {y}"));
                 }
                 ui.separator();
-                if self.history.is_modified() {
+                if self.tab.history.is_modified() {
                     ui.label("Cambios sin exportar");
                     ui.separator();
                 }
@@ -222,7 +222,7 @@ impl PyroApp {
                     ui.separator();
                     self.layers_ui(ui);
                 });
-                if let Some(info) = self.png_info.as_ref().filter(|i| i.is_fireworks()) {
+                if let Some(info) = self.tab.png_info.as_ref().filter(|i| i.is_fireworks()) {
                     ui.separator();
                     egui::CollapsingHeader::new("Archivo de Fireworks").default_open(true).show(ui, |ui| {
                         ui.label(
@@ -285,7 +285,7 @@ impl PyroApp {
             ui.small("Mayús: añadir · Alt: restar");
         }
         if self.tool == Tool::Clone {
-            match self.clone_source {
+            match self.tab.clone_source {
                 Some(s) => ui.label(format!("Origen: {:.0}, {:.0} (Alt+clic para cambiarlo)", s.0, s.1)),
                 None => ui.label("Alt+clic sobre la imagen para fijar el origen."),
             };
@@ -304,7 +304,7 @@ impl PyroApp {
 
     pub(super) fn layers_ui(&mut self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("Capas").text_style(title_style()));
-        let locked = self.filter_dialog.is_some();
+        let locked = self.tab.filter_dialog.is_some();
         let mut clicked = None;
         ui.add_enabled_ui(!locked, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -333,10 +333,10 @@ impl PyroApp {
 
         let mut toggle = None;
         let mut select = None;
-        for i in (0..self.doc.layers.len()).rev() {
+        for i in (0..self.tab.doc.layers.len()).rev() {
             ui.horizontal(|ui| {
-                let mut visible = self.doc.layers[i].visible;
-                let name = self.doc.layers[i].name.clone();
+                let mut visible = self.tab.doc.layers[i].visible;
+                let name = self.tab.doc.layers[i].name.clone();
                 let check = ui.checkbox(&mut visible, "").on_hover_text("Visible");
                 check.widget_info(|| {
                     egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, visible, format!("Visible: {name}"))
@@ -344,36 +344,36 @@ impl PyroApp {
                 if check.changed() {
                     toggle = Some(i);
                 }
-                if widgets::active_row(ui, i == self.doc.active, &name).clicked() {
+                if widgets::active_row(ui, i == self.tab.doc.active, &name).clicked() {
                     select = Some(i);
                 }
             });
         }
         if let Some(i) = toggle {
-            self.history.push(&self.doc);
-            self.doc.layers[i].visible = !self.doc.layers[i].visible;
-            self.dirty = Dirty::All;
+            self.tab.history.push(&self.tab.doc);
+            self.tab.doc.layers[i].visible = !self.tab.doc.layers[i].visible;
+            self.tab.dirty = Dirty::All;
         }
         if let Some(i) = select {
             if !locked {
-                self.doc.active = i;
+                self.tab.doc.active = i;
             }
         }
 
         ui.add_space(4.0);
-        let active = self.doc.active;
+        let active = self.tab.doc.active;
         ui.horizontal(|ui| {
             ui.label("Nombre");
-            ui.text_edit_singleline(&mut self.doc.layers[active].name);
+            ui.text_edit_singleline(&mut self.tab.doc.layers[active].name);
         });
-        let mut opacity = self.doc.layers[active].opacity * 100.0;
+        let mut opacity = self.tab.doc.layers[active].opacity * 100.0;
         let r = ui.add(egui::Slider::new(&mut opacity, 0.0..=100.0).suffix(" %").text("Opacidad de capa"));
         if r.drag_started() || (r.changed() && !r.dragged()) {
-            self.history.push(&self.doc);
+            self.tab.history.push(&self.tab.doc);
         }
         if r.changed() {
-            self.doc.layers[active].opacity = opacity / 100.0;
-            self.dirty = Dirty::All;
+            self.tab.doc.layers[active].opacity = opacity / 100.0;
+            self.tab.dirty = Dirty::All;
         }
     }
 }

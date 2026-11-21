@@ -127,13 +127,14 @@ pub(super) struct NewDialog {
 
 impl PyroApp {
     pub(super) fn save_export(&mut self, ctx: &egui::Context) {
-        let Some(dlg) = &self.export_dialog else {
+        let Some(dlg) = &self.tab.export_dialog else {
             return;
         };
         let Some(bytes) = &dlg.bytes else { return };
         let format = dlg.format();
         let ext = format.extension();
         let stem = self
+            .tab
             .source_path
             .as_ref()
             .and_then(|p| p.file_name())
@@ -146,8 +147,8 @@ impl PyroApp {
         else {
             return;
         };
-        let is_fw_source = self.png_info.as_ref().is_some_and(FwInfo::is_fireworks);
-        let failure = if is_fw_source && self.source_path.as_deref() == Some(path.as_path()) {
+        let is_fw_source = self.tab.png_info.as_ref().is_some_and(FwInfo::is_fireworks);
+        let failure = if is_fw_source && self.tab.source_path.as_deref() == Some(path.as_path()) {
             Some(
                 "No se sobrescribe el archivo de Fireworks original: perdería sus capas. Elige otro nombre."
                     .to_string(),
@@ -162,35 +163,35 @@ impl PyroApp {
             })
         };
         if let Some(message) = failure {
-            if let Some(dlg) = &mut self.export_dialog {
+            if let Some(dlg) = &mut self.tab.export_dialog {
                 dlg.save_error = Some(message.clone());
             }
             self.fail(message);
             return;
         }
         self.info(format!("Exportado {} ({})", path.display(), format_size(bytes.len())));
-        self.history.mark_saved();
-        if let Some(dlg) = &mut self.export_dialog {
+        self.tab.history.mark_saved();
+        if let Some(dlg) = &mut self.tab.export_dialog {
             dlg.save_error = None;
         }
         // Si la exportación venía de «Exportar primero», sigue con lo pendiente.
-        if let Some(pending) = self.after_export.take() {
-            self.export_dialog = None;
+        if let Some(pending) = self.tab.after_export.take() {
+            self.tab.export_dialog = None;
             self.perform(pending, ctx);
         }
     }
 
     pub(super) fn filter_window(&mut self, ctx: &egui::Context) {
-        let Some(dlg) = &mut self.filter_dialog else {
+        let Some(dlg) = &mut self.tab.filter_dialog else {
             return;
         };
         if let Some((filter, job)) = &mut dlg.preview {
             match job.poll() {
                 JobPoll::Running => {}
                 JobPoll::Done(img) => {
-                    let active = self.doc.active;
-                    self.doc.layers[active].pixels = Arc::new(img);
-                    self.dirty = Dirty::All;
+                    let active = self.tab.doc.active;
+                    self.tab.doc.layers[active].pixels = Arc::new(img);
+                    self.tab.dirty = Dirty::All;
                     dlg.shown = Some(*filter);
                     dlg.preview = None;
                 }
@@ -202,8 +203,8 @@ impl PyroApp {
         let mut changed = false;
         let scope = format!(
             "Capa «{}» · {}",
-            self.doc.active_layer().name,
-            if self.doc.selection.is_some() { "solo dentro de la selección" } else { "toda la capa" }
+            self.tab.doc.active_layer().name,
+            if self.tab.doc.selection.is_some() { "solo dentro de la selección" } else { "toda la capa" }
         );
         egui::Window::new(dlg.filter.name()).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.label(scope);
@@ -261,7 +262,7 @@ impl PyroApp {
         }
         if dlg.dirty {
             // Lo que se calculaba ya no vale: se suelta (y se cancela) y se lanza otra.
-            let (filter, source, sel) = (dlg.filter, Arc::clone(&dlg.backup), self.doc.selection.clone());
+            let (filter, source, sel) = (dlg.filter, Arc::clone(&dlg.backup), self.tab.doc.selection.clone());
             let job = Job::spawn(tasks::wake(ctx), move |monitor| Ok(filter.run(&source, sel.as_ref(), monitor)?));
             dlg.preview = Some((filter, job));
             dlg.dirty = false;
@@ -269,21 +270,21 @@ impl PyroApp {
         let current = dlg.filter;
         let ready = dlg.preview.is_none() && dlg.shown == Some(current);
         if cancel {
-            let active = self.doc.active;
-            self.doc.layers[active].pixels = Arc::clone(&dlg.backup);
-            self.history.discard_last();
-            self.filter_dialog = None;
-            self.dirty = Dirty::All;
+            let active = self.tab.doc.active;
+            self.tab.doc.layers[active].pixels = Arc::clone(&dlg.backup);
+            self.tab.history.discard_last();
+            self.tab.filter_dialog = None;
+            self.tab.dirty = Dirty::All;
         } else if dlg.apply_requested && ready {
-            self.history.seal(&self.doc);
-            self.filter_dialog = None;
+            self.tab.history.seal(&self.tab.doc);
+            self.tab.filter_dialog = None;
             self.info(format!("{} aplicado.", current.name()));
         }
     }
 
     pub(super) fn export_window(&mut self, ctx: &egui::Context) {
         let after_hint = self.after_export_hint();
-        let Some(dlg) = &mut self.export_dialog else {
+        let Some(dlg) = &mut self.tab.export_dialog else {
             return;
         };
         if let Some(job) = &mut dlg.job {
@@ -405,8 +406,8 @@ impl PyroApp {
             }
         });
         if !open {
-            self.export_dialog = None;
-            self.after_export = None;
+            self.tab.export_dialog = None;
+            self.tab.after_export = None;
         } else if save {
             self.save_export(ctx);
         }
