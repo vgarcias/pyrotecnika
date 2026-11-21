@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use image::RgbaImage;
+use rayon::prelude::*;
 
 use crate::document::{Document, Layer, LayerId};
 use crate::selection::Mask;
@@ -103,22 +104,21 @@ fn diff_tiles(before: &RgbaImage, after: &RgbaImage) -> Vec<Tile> {
     let (w, h) = before.dimensions();
     let stride = w as usize * 4;
     let (a, b) = (before.as_raw(), after.as_raw());
-    let mut out = Vec::new();
-    for ty in (0..h).step_by(TILE as usize) {
-        let th = TILE.min(h - ty);
-        for tx in (0..w).step_by(TILE as usize) {
-            let tw = TILE.min(w - tx);
-            let differs = (ty..ty + th).any(|row| {
-                let start = row as usize * stride + tx as usize * 4;
-                let end = start + tw as usize * 4;
-                a[start..end] != b[start..end]
-            });
-            if differs {
-                out.push(Tile { x: tx, y: ty, w: tw, h: th, data: read_tile(before, tx, ty, tw, th) });
-            }
-        }
-    }
-    out
+    let rows: Vec<u32> = (0..h).step_by(TILE as usize).collect();
+    rows.par_iter()
+        .flat_map_iter(|&ty| {
+            let th = TILE.min(h - ty);
+            (0..w).step_by(TILE as usize).filter_map(move |tx| {
+                let tw = TILE.min(w - tx);
+                let differs = (ty..ty + th).any(|row| {
+                    let start = row as usize * stride + tx as usize * 4;
+                    let end = start + tw as usize * 4;
+                    a[start..end] != b[start..end]
+                });
+                differs.then(|| Tile { x: tx, y: ty, w: tw, h: th, data: read_tile(before, tx, ty, tw, th) })
+            })
+        })
+        .collect()
 }
 
 /// Describe `before` respecto de `after`.

@@ -12,6 +12,8 @@ mod dialogs;
 mod guard;
 pub(crate) mod icons;
 mod input;
+#[cfg(test)]
+mod medir_tests;
 mod palette;
 mod panels;
 mod prefs;

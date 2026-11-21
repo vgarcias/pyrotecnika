@@ -115,24 +115,36 @@ impl Mask {
             }
             return m;
         }
-        let mut stack = vec![(x, y)];
-        while let Some((px, py)) = stack.pop() {
-            let idx = (py * w + px) as usize;
-            if m.data[idx] != 0 || !similar(img.get_pixel(px, py).0) {
+        // Relleno por líneas: cada tramo horizontal se marca de una vez y
+        // solo se apilan los comienzos de tramo de las filas vecinas.
+        let raw = img.as_raw();
+        let (w, h) = (w as usize, h as usize);
+        let fits = |i: usize| similar([raw[i * 4], raw[i * 4 + 1], raw[i * 4 + 2], raw[i * 4 + 3]]);
+        let mut stack = vec![(x as usize, y as usize)];
+        while let Some((sx, sy)) = stack.pop() {
+            let row = sy * w;
+            if m.data[row + sx] != 0 || !fits(row + sx) {
                 continue;
             }
-            m.data[idx] = 255;
-            if px > 0 {
-                stack.push((px - 1, py));
+            let mut left = sx;
+            while left > 0 && m.data[row + left - 1] == 0 && fits(row + left - 1) {
+                left -= 1;
             }
-            if px + 1 < w {
-                stack.push((px + 1, py));
+            let mut right = sx;
+            while right + 1 < w && m.data[row + right + 1] == 0 && fits(row + right + 1) {
+                right += 1;
             }
-            if py > 0 {
-                stack.push((px, py - 1));
-            }
-            if py + 1 < h {
-                stack.push((px, py + 1));
+            m.data[row + left..=row + right].fill(255);
+            for ny in [sy.checked_sub(1), (sy + 1 < h).then_some(sy + 1)].into_iter().flatten() {
+                let nrow = ny * w;
+                let mut in_run = false;
+                for nx in left..=right {
+                    let open = m.data[nrow + nx] == 0 && fits(nrow + nx);
+                    if open && !in_run {
+                        stack.push((nx, ny));
+                    }
+                    in_run = open;
+                }
             }
         }
         m
@@ -280,5 +292,46 @@ mod tests {
         let c = s.cropped(2, 1, 4, 3);
         assert_eq!((c.width, c.height), (2, 2));
         assert_eq!(c.get(0, 0), 255);
+    }
+    /// Relleno de referencia, píxel a píxel (4 vecinos).
+    fn reference_wand(img: &RgbaImage, x: u32, y: u32, tol: u8) -> Vec<u8> {
+        let (w, h) = img.dimensions();
+        let seed = img.get_pixel(x, y).0;
+        let similar = |p: [u8; 4]| p.iter().zip(seed.iter()).all(|(a, b)| a.abs_diff(*b) <= tol);
+        let mut out = vec![0u8; (w * h) as usize];
+        let mut stack = vec![(x, y)];
+        while let Some((px, py)) = stack.pop() {
+            let i = (py * w + px) as usize;
+            if out[i] != 0 || !similar(img.get_pixel(px, py).0) {
+                continue;
+            }
+            out[i] = 255;
+            if px > 0 {
+                stack.push((px - 1, py));
+            }
+            if px + 1 < w {
+                stack.push((px + 1, py));
+            }
+            if py > 0 {
+                stack.push((px, py - 1));
+            }
+            if py + 1 < h {
+                stack.push((px, py + 1));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn varita_contigua_igual_que_la_referencia() {
+        // Laberinto de franjas y huecos: regiones con entrantes por arriba y por abajo.
+        let img = image::RgbaImage::from_fn(97, 61, |x, y| {
+            let wall = (x % 7 == 3 && y % 11 != 5) || (y % 9 == 4 && x % 13 != 6) || (x * y) % 17 == 1;
+            image::Rgba(if wall { [0, 0, 0, 255] } else { [(x * 2) as u8, 200, 100, 255] })
+        });
+        for (x, y, tol) in [(0, 0, 10), (50, 30, 40), (96, 60, 255), (10, 50, 0), (3, 3, 10)] {
+            let m = Mask::magic_wand(&img, x, y, tol, true);
+            assert_eq!(m.data, reference_wand(&img, x, y, tol), "semilla ({x}, {y}), tolerancia {tol}");
+        }
     }
 }

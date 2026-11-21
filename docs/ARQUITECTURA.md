@@ -62,7 +62,7 @@ Arquitectura por capas con dependencias en un solo sentido (de arriba abajo). El
 
 ### 1.1 Principios
 
-- **El núcleo es puro.** `pyro-core` no lee archivos, no usa hilos y no depende de egui. Recibe y devuelve buffers, así que se prueba de forma determinista y se puede reutilizar (CLI de procesamiento por lotes, plugins futuros).
+- **El núcleo es puro.** `pyro-core` no lee archivos, no lanza hilos propios (reparte el trabajo de píxeles con `rayon`) y no depende de egui. Recibe y devuelve buffers, así que se prueba de forma determinista y se puede reutilizar (CLI de procesamiento por lotes, plugins futuros).
 - **Comandos en vez de llamadas directas.** El `enum Action` actual pasa a ser un **registro de comandos** (`CommandId` → nombre, categoría, atajo por defecto, `is_enabled(&State)`, `run`). El menú, los atajos de teclado, la paleta de comandos (Ctrl/⌘+K) y el menú nativo de macOS leen todos del mismo registro. Así los atajos son configurables y cada acción se puede hacer con teclado.
 - **La plataforma va detrás de traits.** `pyro-platform` expone `trait Clipboard`, `trait Notifier`, `trait SecretStore`, etc., con una implementación por SO compilada con `#[cfg(target_os)]`, más una implementación falsa para pruebas.
 - **La UI nunca espera.** Toda operación de más de ~16 ms (filtros, abrir, exportar, guardar, actualizar) es un `Job` en `pyro-services::jobs`.
@@ -70,20 +70,25 @@ Arquitectura por capas con dependencias en un solo sentido (de arriba abajo). El
 ### 1.2 Modelo de concurrencia
 
 ```
-Hilo UI (egui, 60 fps)                       Pool de trabajo (rayon)
-  │  submit(Job{input: Arc<Snapshot>}) ───────▶  ejecuta por teselas, en paralelo
-  │                                              consulta CancelToken entre teselas
-  │  ◀── JobEvent::Progress(f32) / Done(res) ──  envía por canal + ctx.request_repaint()
-  │  aplica el resultado y lo registra en el historial
+Hilo UI (egui)                                 Hilo de la tarea (+ rayon dentro)
+  │  Job::spawn(wake, trabajo) ───────────────▶  recibe una instantánea (capas Arc)
+  │                                              consulta la cancelación entre bandas
+  │  ◀── progress() / poll(): Done · Failed ───  y avisa con wake = ctx.request_repaint()
+  │      · Cancelled
+  │  aplica el resultado y sella el paso de historial
 ```
 
-- Los filtros muestran primero una **vista previa a resolución reducida** (≤1 Mpx) y aplican el resultado completo en segundo plano.
-- Las instantáneas son `Arc` (copia al escribir), así que lanzar un job no copia píxeles.
-- Solo un job de escritura a la vez por documento; los de lectura (exportar) pueden ir en paralelo.
+- Implementado en `pyro-services::jobs` (`Job`, `JobCtx`, `JobPoll`). El núcleo solo ve el trait `pyro_core::task::Monitor` (¿cancelado?, progreso), así que no depende del crate de servicios.
+- **Corren como tarea:** abrir (leer + decodificar con límites), aplicar un filtro sin parámetros, la vista previa de los filtros con parámetros y exportar. Los filtros trabajan por bandas de 128 filas en paralelo y se pueden cancelar entre bandas.
+- **Vista previa a resolución completa:** lo que se ve es exactamente lo que se aplica. Al mover un control se cancela la vista previa en curso y se lanza otra; «Aplicar» espera a la vigente.
+- Mientras corre una tarea que cambia el documento (abrir, filtro), la barra de estado muestra su nombre, el progreso y «Cancelar» (también Esc); la vista sigue viva y la edición se bloquea. Exportar va aparte, en su diálogo, y se puede seguir editando.
+- Las instantáneas son `Arc` (copia al escribir), así que lanzar una tarea no copia píxeles. Un contador de generación descarta el resultado de una tarea lanzada sobre otro documento.
 
-### 1.3 Historial por teselas
+### 1.3 Historial por diferencias de bloques
 
-Las capas se guardan como teselas de 256×256 en `Arc<Tile>`. Un paso de deshacer guarda **solo las teselas modificadas**. Un trazo de pincel sobre un lienzo 4K pasa de costar ~33 MB por capa a unos pocos cientos de KB, y el presupuesto de 768 MB alcanza para cientos de pasos.
+Las capas son una imagen entera dentro de un `Arc` con copia al escribir y un id estable (`LayerId`). Cada paso de deshacer guarda el estado anterior como **delta inverso** respecto del siguiente: de cada capa, solo los bloques de 256×256 que cambiaron; las capas nuevas, borradas o de otro tamaño, enteras. Al cerrar el paso (soltar el pincel, aplicar un filtro, o el siguiente cambio) se comparan antes y después por bloques. Un trazo sobre un lienzo 4K cuesta unos pocos cientos de KB en vez de 64 MB; el presupuesto es de 768 MB y el tope, de 200 pasos.
+
+*Evolución posible:* partir también las capas en memoria en teselas `Arc<Tile>` (enfoque A del diseño de la fase 3), que ahorraría la copia de la capa al empezar a editarla. Hoy esa copia cuesta ~11 ms en 4K y no hace falta.
 
 ### 1.4 Errores y recuperación ante fallos
 
@@ -306,7 +311,7 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RF-07 | Exportar optimizado: PNG-8/24/32, JPEG, GIF, WebP, con tamaño estimado | ✔ |
 | RF-08 | **Formato nativo con capas** (OpenRaster `.ora`, estándar abierto compatible con GIMP y Krita) | ○ |
 | RF-09 | Autoguardado y recuperación tras un cierre inesperado | ○ |
-| RF-10 | Deshacer/rehacer por teselas y panel de historial | ◐ |
+| RF-10 | Deshacer/rehacer por diferencias de bloques (✔, fase 3) y panel de historial (fase 4) | ◐ |
 | RF-11 | Portapapeles: copiar y pegar la selección o la imagen como píxeles con otras apps; pegar como nueva capa o nuevo documento | ○ |
 | RF-12 | Arrastrar y soltar archivos al lienzo (abrir) o al panel de capas (añadir como capa); arrastrar hacia fuera para exportar | ◐ (solo abrir) |
 | RF-13 | Atajos de teclado configurables, con detección de conflictos e importación/exportación (de fábrica, los de Fireworks CS6: `docs/ATAJOS.md`) | ✔ |
@@ -336,7 +341,7 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RNF-S2 | Red | Solo HTTPS (rustls) con verificación de certificados; nunca se baja a HTTP; *timeouts* de 10 s |
 | RNF-S3 | Actualizaciones | Paquetes firmados con ed25519 (minisign); se rechazan si la firma no coincide con la clave pública incluida en el binario |
 | RNF-S4 | Secretos | Las credenciales futuras (nube) se guardan en el llavero del SO, nunca en TOML ni en logs; ninguna clave en el repositorio (se revisa con `gitleaks` en CI); las claves de firma solo existen como secretos de CI |
-| RNF-S5 | Dependencias | `cargo deny` (advisories, licencias, orígenes) y `cargo audit` bloquean el merge; `#![forbid(unsafe_code)]` en `pyro-core` y `pyro-formats` |
+| RNF-S5 | Dependencias | `cargo deny` (advisories, licencias, orígenes) y `cargo audit` bloquean el merge; `#![forbid(unsafe_code)]` en `pyro-core`, `pyro-formats` y `pyro-services` |
 | RNF-S6 | Privacidad | Sin telemetría. La comprobación de actualizaciones solo envía versión y SO, y se puede desactivar |
 | RNF-A1 | Teclado | Toda acción es accesible con teclado: Tab/Shift+Tab, F6 para cambiar de panel, flechas en listas, Esc para cerrar |
 | RNF-A2 | Lectores de pantalla | Todos los widgets tienen rol y nombre en AccessKit (Narrador/NVDA, VoiceOver, Orca); los cambios de herramienta, zoom y selección se anuncian como región *live* |
@@ -344,6 +349,27 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RNF-A4 | Visual | Contrastes de §4.1, escala de UI de 80–200 %, foco visible, información nunca solo por color |
 | RNF-M1 | Mantenibilidad | `clippy -D warnings`; ningún archivo de más de ~600 líneas; cobertura ≥ 80 % en `pyro-core` y `pyro-formats` |
 | RNF-X1 | Consistencia | Las capturas de UI de referencia coinciden entre los 3 SO (tolerancia de diferencia perceptual ≤ 1 %) |
+
+### 5.3 Mediciones (fase 3, 2026-11-21)
+
+Documento de 4096×4096 con 3 capas, `--release`, en la máquina del autor (Windows 11, 16 hilos). Se repiten con `PYRO_MEDIR_ESTRICTO=1 cargo test --release --workspace -- --ignored medir --test-threads=1` (`crates/pyro-core/tests/medir.rs`, `crates/pyro-ui/src/app/medir_tests.rs`); el CI las ejecuta sin exigir tiempos.
+
+| Requisito | Medida | Resultado | Límite |
+|---|---|---|---|
+| RNF-P3 | Trabajo de CPU por fotograma durante un trazo (pincelada + componer el rectángulo + preparar el bloque), p95 | 0,3 ms | 16 ms |
+| RNF-P4 | Primera pincelada (copia la capa compartida con el historial) | 11 ms | 50 ms |
+| RNF-P4 | Sellar el paso de historial tras un trazo | 10 ms | 50 ms |
+| RNF-P4 | Varita contigua / no contigua | 3 / 14 ms | 50 ms |
+| RNF-P4 | Bote de pintura | 30–44 ms | 50 ms |
+| RNF-P4 | Recortar · combinar abajo · borrar selección | 27 · 20 · 16 ms | 50 ms |
+| RNF-P4 | Componer todo el documento | 19 ms | 50 ms |
+| RNF-P4 | Deshacer / rehacer tras un trazo | 1 / 0,5 ms | 50 ms |
+| RNF-P4 | Abrir, filtros, vista previa, exportar | en segundo plano, con progreso y cancelación | — |
+| RNF-P2 | Memoria del historial tras 100 trazos pequeños | 53 MB | 768 MB (presupuesto) |
+| RNF-E1 | Archivos dañados (truncados, longitudes y CRC imposibles, cabeceras absurdas, 200 entradas al azar) | ningún `panic` | — |
+| RNF-S1 | Cabeceras de 40 000×10 y 30 000×30 000 | rechazadas en < 100 ms sin reservar memoria | — |
+
+El fuzzing (`fuzz/`, `cargo-fuzz`: `open_bytes` e `inspect_png`) corre cada noche 10 min por objetivo en `.github/workflows/fuzz.yml`. La parte «se pierde como máximo el trabajo de 2 min» de RNF-E1 es de la fase 4 (autoguardado).
 
 ---
 
@@ -467,7 +493,7 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 | **0. Cimientos** ✔ | Workspace en crates; `app.rs` partido en módulos; backend wgpu; CI en los 3 SO; licencias; `cargo-deny`; prueba de concepto de abrir archivos en macOS | Verificado en los tres SO en el CI de GitHub (jobs `test` y `macos-open-files`) |
 | **1. Sistema de diseño** ✔ | Tokens neutros, temas claro/oscuro/alto contraste, Inter y JetBrains Mono, iconos, estados por inversión, escala de UI | Snapshots de referencia aprobados por el autor (2026-11-16; `crates/pyro-ui/tests/snapshots/`) |
 | **2. Comandos y preferencias** ✔ | Catálogo de comandos, atajos de Fireworks configurables, paleta Ctrl+K, preferencias y recientes en TOML, Mostrar en carpeta | RF-13 a RF-15, y RF-16 en lo que ya existe (spec `docs/superpowers/specs/2026-11-17-fase2-comandos-preferencias-design.md`) |
-| **3. No bloqueo y memoria** | Jobs con progreso y cancelación, historial por teselas, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos |
+| **3. No bloqueo y memoria** ✔ | Tareas con progreso y cancelación (`pyro-services::jobs`), historial por diferencias de bloques, lienzo por bloques, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos (§5.3; spec `docs/superpowers/specs/2026-11-19-fase3-no-bloqueo-memoria-design.md`) |
 | **4. Formato nativo y recuperación** | `.ora`, autoguardado, panic hook, pestañas | RF-08 a RF-10, RF-20 |
 | **5. Integración de escritorio** | Portapapeles de imagen, arrastrar y soltar completo, notificaciones, menú macOS, asociación de archivos, instancia única | RF-11, 12, 17, 19 |
 | **6. Distribución** ◐ | Paquetes de los 6 formatos ✔ (más NSIS), feed y updater ✔, firma de código y notarización (pendientes, decisión 9.2-1) | Instalar → actualizar → desinstalar en VMs limpias |

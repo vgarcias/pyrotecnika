@@ -5,6 +5,7 @@
 //! sitio dentro del mismo trazo.
 
 use image::{Rgba, RgbaImage};
+use rayon::prelude::*;
 use std::sync::Arc;
 
 use crate::document::{blend_over, lerp_rgba};
@@ -164,11 +165,15 @@ pub fn flood_fill(
     if let Some(s) = sel {
         region.combine(s, SelectMode::Intersect);
     }
-    for (p, &m) in layer.pixels_mut().zip(region.data.iter()) {
-        if m > 0 {
-            p.0 = blend_over(p.0, color, opacity * m as f32 / 255.0);
+    let width = layer.width() as usize;
+    layer.par_chunks_mut(width * 4).zip(region.data.par_chunks(width)).for_each(|(row, mask)| {
+        for (p, &m) in row.chunks_exact_mut(4).zip(mask) {
+            if m > 0 {
+                let out = blend_over([p[0], p[1], p[2], p[3]], color, opacity * m as f32 / 255.0);
+                p.copy_from_slice(&out);
+            }
         }
-    }
+    });
     true
 }
 

@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use image::{imageops, Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use rayon::prelude::*;
 
 use crate::selection::Mask;
@@ -213,10 +213,16 @@ impl Document {
         let top = self.layers.remove(self.active);
         self.active -= 1;
         if top.visible {
+            let row = self.width as usize * 4;
             let below = self.layers[self.active].image_mut();
-            for (d, s) in below.pixels_mut().zip(top.pixels.pixels()) {
-                d.0 = blend_over(d.0, s.0, top.opacity);
-            }
+            below.par_chunks_mut(row).zip(top.pixels.par_chunks(row)).for_each(|(d, s)| {
+                for (dp, sp) in d.chunks_exact_mut(4).zip(s.chunks_exact(4)) {
+                    if sp[3] != 0 {
+                        let out = blend_over([dp[0], dp[1], dp[2], dp[3]], [sp[0], sp[1], sp[2], sp[3]], top.opacity);
+                        dp.copy_from_slice(&out);
+                    }
+                }
+            });
         }
         true
     }
@@ -224,9 +230,9 @@ impl Document {
     /// Recorta todas las capas (x1/y1 exclusivos).
     pub fn crop(&mut self, x0: u32, y0: u32, x1: u32, y1: u32) {
         let (w, h) = (x1 - x0, y1 - y0);
-        for layer in &mut self.layers {
-            layer.pixels = Arc::new(imageops::crop_imm(&*layer.pixels, x0, y0, w, h).to_image());
-        }
+        self.layers.par_iter_mut().for_each(|layer| {
+            layer.pixels = Arc::new(crop_rows(&layer.pixels, x0, y0, w, h));
+        });
         self.width = w;
         self.height = h;
         self.selection = None;
@@ -247,14 +253,29 @@ impl Document {
         let Some(sel) = &self.selection else {
             return false;
         };
+        let width = self.width as usize;
         let layer = self.layers[self.active].image_mut();
-        for (p, &m) in layer.pixels_mut().zip(sel.data.iter()) {
-            if m > 0 {
-                p.0[3] = (p.0[3] as f32 * (1.0 - m as f32 / 255.0)).round() as u8;
+        layer.par_chunks_mut(width * 4).zip(sel.data.par_chunks(width)).for_each(|(row, mask)| {
+            for (p, &m) in row.chunks_exact_mut(4).zip(mask) {
+                if m > 0 {
+                    p[3] = (p[3] as f32 * (1.0 - m as f32 / 255.0)).round() as u8;
+                }
             }
-        }
+        });
         true
     }
+}
+
+/// Copia el rectángulo `w`×`h` desde (`x0`, `y0`) fila a fila.
+fn crop_rows(img: &RgbaImage, x0: u32, y0: u32, w: u32, h: u32) -> RgbaImage {
+    let stride = img.width() as usize * 4;
+    let row = w as usize * 4;
+    let mut data = Vec::with_capacity(row * h as usize);
+    for y in y0..y0 + h {
+        let start = y as usize * stride + x0 as usize * 4;
+        data.extend_from_slice(&img.as_raw()[start..start + row]);
+    }
+    RgbaImage::from_raw(w, h, data).expect("medidas del recorte")
 }
 
 /// Desplaza una capa. Con selección, solo se mueven los píxeles seleccionados
@@ -300,6 +321,7 @@ pub fn shift_pixels(base: &RgbaImage, sel: Option<&Mask>, dx: i32, dy: i32) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::imageops;
 
     #[test]
     fn blend_over_opaque_and_half() {
