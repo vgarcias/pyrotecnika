@@ -81,9 +81,17 @@ recuperación, para que estos nazcan ya para varios documentos.
   queda sin documento).
 - **Atajos nuevos** (en el catálogo de comandos, configurables): Ctrl+Tab /
   Ctrl+Mayús+Tab (pestaña siguiente / anterior), Ctrl+W (cerrar pestaña).
-  Menú Ventana con la lista de pestañas abiertas.
-- **Cerrar una pestaña con cambios:** la confirmación actual, con
-  «Guardar», «Descartar» y «Cancelar» (foco inicial en Cancelar).
+  Menú **Ventana** nuevo en la barra de menús (tras Ver, en los tres SO) con
+  pestaña siguiente/anterior, cerrar pestaña y la lista de pestañas.
+- Si el archivo de un documento recuperado (§6.4) ya está abierto en otra
+  pestaña, el recuperado se abre aparte como «nombre (recuperado)».
+- **Cerrar una pestaña con cambios:** confirmación con «Guardar»,
+  «Descartar» y «Cancelar» (foco inicial en Cancelar). Se rehace la ventana
+  de confirmación actual conservando sus nombres accesibles.
+- **Cerrar con un guardado en curso:** la pestaña (o la app) espera a que
+  termine; mientras, la barra de estado dice «Guardando…» y el cierre sigue
+  solo al acabar. Si el guardado falla, no se cierra y se avisa. Las
+  exportaciones y los autoguardados en curso se cancelan al cerrar.
 - **Cerrar la app** con varias pestañas con cambios: una sola ventana que
   las lista y ofrece «Guardar todo», «Descartar todo» o «Cancelar». Al
   guardar todo, las pestañas sin archivo piden ruta una a una; cancelar
@@ -110,7 +118,10 @@ recuperación, para que estos nazcan ya para varios documentos.
   causa (como al exportar).
 - Guardar corre en segundo plano como tarea de la pestaña (con progreso),
   pero **no bloquea la edición**: guarda una instantánea (capas `Arc`).
-- Tras guardar bien: la pestaña queda sin «•», el nombre de la pestaña y el
+- La marca de guardado corresponde a la instantánea: si se editó mientras
+  se guardaba, la pestaña sigue con «•». Si el guardado falla, la marca no
+  cambia y se avisa con la causa.
+- Tras guardar bien: la pestaña queda sin «•» (salvo lo anterior), el nombre de la pestaña y el
   título pasan a `nombre.ora`, se añade a recientes y se borra su
   autoguardado.
 - **Exportar ya no quita la marca de cambios** (antes sí, porque no había
@@ -133,7 +144,13 @@ recuperación, para que estos nazcan ya para varios documentos.
   capas de texto o filtros: se leen como capa de bitmap normal y se avisa
   una vez («Este archivo usa funciones que Pyrotecnika aún no admite; se
   abrió aproximado»). Si falta `stack.xml` pero hay `mergedimage.png`, se
-  abre aplanado con aviso.
+  abre aplanado con aviso. Lo que quede fuera del lienzo por `x`/`y` se
+  recorta (el modelo no tiene capas desplazadas) y se avisa. Al guardar,
+  lo que no se admite (grupos, modos, texto) no se conserva; el aviso al
+  abrir es el único.
+- Capa activa: la marcada con `pyrotecnika:selected`; si no hay ninguna, la
+  de arriba; si hay varias, la primera. El espacio de nombres
+  `xmlns:pyrotecnika` se declara en la raíz `<image>`.
 - Límites de la fase 3 (32 768 px por lado, 2 GB por capa) para el stack y
   cada capa; además, tamaño total descomprimido ≤ 8 GB y ≤ 1 000 capas.
 - Nuevo objetivo de fuzzing `open_ora`.
@@ -144,6 +161,9 @@ recuperación, para que estos nazcan ya para varios documentos.
   `%LOCALAPPDATA%\Pyrotecnika`, `~/Library/Application Support/io.Pyrotecnika`,
   `$XDG_DATA_HOME/pyrotecnika` o `~/.local/share/pyrotecnika`), subcarpeta
   `recovery/`.
+- Solo se autoguardan pestañas con cambios sin guardar (una «Sin título»
+  vacía o un PNG abierto sin tocar no escriben nada). «Cambios desde el
+  último autoguardado» se lleva aparte de «sin guardar».
 - Cada 2 min, cada pestaña con cambios desde su último autoguardado se
   guarda allí en `.ora` (tarea de baja prioridad, misma escritura atómica)
   junto a un pequeño archivo de datos: ruta de origen y `.ora` si las
@@ -155,6 +175,11 @@ recuperación, para que estos nazcan ya para varios documentos.
   «Recuperar» (abre cada uno en una pestaña marcada con cambios y con su
   nombre y rutas originales), «Descartar» y «Decidir después» (se
   conservan y se vuelven a ofrecer en el siguiente arranque).
+- Al recuperar, el autoguardado viejo se conserva hasta que la sesión nueva
+  autoguarda esa pestaña (enseguida, sin esperar los 2 min) o la guarda o
+  cierra; así no hay un hueco sin protección.
+- Guardar un recuperado escribe en su ruta `.ora` original si la tenía, sin
+  comprobar si cambió en disco desde el fallo.
 - Dos instancias abiertas a la vez no se roban los autoguardados: cada
   sesión escribe en su propia subcarpeta y al arrancar solo se ofrecen las
   de sesiones que ya no están vivas (marca de sesión con el PID y la hora de
@@ -179,8 +204,10 @@ recuperación, para que estos nazcan ya para varios documentos.
 - Cada paso tiene nombre: «Pincel», «Borrador», «Tampón», «Desenfocar»,
   «Mover», «Bote de pintura», «Selección», «Deseleccionar», «Borrar
   selección», «Recortar», «Nueva capa», «Duplicar capa», «Eliminar capa»,
-  «Subir capa», «Bajar capa», «Combinar abajo», «Propiedades de capa» y el
-  nombre del filtro.
+  «Subir capa», «Bajar capa», «Combinar abajo», «Propiedades de capa»
+  (opacidad, visibilidad o nombre) y el nombre del filtro. El nombre se da
+  al registrar el paso. Un trazo es un paso. Cualquier otro cambio se llama
+  «Cambio».
 - Clic en un paso: deshace o rehace hasta él. Con teclado: la lista es
   navegable con flechas e Intro, y cada fila tiene nombre accesible.
 - Si el presupuesto descartó pasos viejos, la primera fila dice «Pasos
@@ -250,6 +277,14 @@ recuperación, para que estos nazcan ya para varios documentos.
 - Panic hook solo escribe el log; la recuperación se apoya en el
   autoguardado.
 - Autoguardados por sesión para que dos instancias no se pisen.
+- Cerrar espera a los guardados en curso; cancela exportaciones y
+  autoguardados.
+- El autoguardado recuperado se conserva hasta que la sesión nueva lo
+  sustituye.
+- Contenido de `.ora` fuera del lienzo se recorta con aviso; grupos, modos
+  y texto no se conservan al guardar.
+- Nombre de paso «Cambio» para lo no listado; menú Ventana nuevo en los
+  tres SO.
 - Capas de grupo y modos de fusión de `.ora` ajenos: se aplanan o se leen
   como normales, con aviso.
 
