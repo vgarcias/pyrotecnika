@@ -3,5 +3,6 @@
 
 #![forbid(unsafe_code)]
 
+pub mod crashlog;
 pub mod jobs;
 pub mod recovery;

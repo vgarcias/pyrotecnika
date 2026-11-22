@@ -7,6 +7,11 @@ use eframe::egui;
 const ICON_PNG: &[u8] = include_bytes!("../../../packaging/icons/256x256.png");
 
 fn main() -> eframe::Result {
+    // Un fallo inesperado deja constancia en el registro (logs/ de la
+    // carpeta de datos); lo abierto se recupera del autoguardado.
+    if let Some(data) = pyro_platform::paths::data_dir() {
+        pyro_services::crashlog::install_panic_hook(data.join("logs"));
+    }
     pyro_platform::open_files::install();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Pyrotecnika")

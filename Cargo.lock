@@ -2802,6 +2802,7 @@ version = "0.2.0"
 dependencies = [
  "eframe",
  "pyro-platform",
+ "pyro-services",
  "pyro-ui",
  "winresource",
 ]

@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 pyro-platform.workspace = true
+pyro-services.workspace = true
 pyro-ui.workspace = true
 eframe.workspace = true
 
