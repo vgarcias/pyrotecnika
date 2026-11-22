@@ -94,9 +94,9 @@ Las capas son una imagen entera dentro de un `Arc` con copia al escribir y un id
 
 - Errores de dominio con `thiserror` en las librerías y `anyhow` solo en `app`. Ningún `unwrap()` en rutas de E/S.
 - Se avisa al usuario con un toast no modal que incluye la causa ("No se pudo leer X: permiso denegado").
-- **Autoguardado** del documento en `.ora` en la carpeta de recuperación cada 2 min si hay cambios (es un job de baja prioridad que no bloquea).
-- **Panic hook:** escribe el log, intenta un guardado de emergencia y, en el siguiente arranque, ofrece "Recuperar documentos".
-- **Logs** con `tracing` y archivo rotativo (7 días) en la carpeta de logs del SO. No se registran rutas completas de archivos del usuario, solo los nombres.
+- **Autoguardado** (`pyro-services::recovery`): cada 2 min, cada pestaña con cambios sin guardar se escribe en `.ora` en `data_dir()/recovery/<sesión>/` (una carpeta por ventana de Pyrotecnika, con un latido cada 30 s), en segundo plano. Guardar o cerrar la pestaña borra su autoguardado; cerrar la app con normalidad borra la carpeta de la sesión.
+- **Recuperación:** al arrancar, los autoguardados de sesiones sin latido desde hace más de 3 min se ofrecen en la ventana «Recuperar trabajo» (Recuperar, Descartar, Decidir después). Dos ventanas abiertas a la vez no se roban sus autoguardados.
+- **Panic hook** (`pyro-services::crashlog`): escribe hora, mensaje, ubicación y traza en `data_dir()/logs/pyrotecnika-AAAA-MM-DD.log` (7 días) y deja terminar la app. No intenta guardar desde el hook (el estado puede estar roto); se cuenta con el autoguardado (≤ 2 min de trabajo perdido). La carpeta del usuario se escribe como `~`.
 
 ### 1.5 Datos locales, base de datos y APIs REST
 
@@ -106,10 +106,11 @@ Las capas son una imagen entera dentro de un `Arc` con copia al escribir y un id
 | Atajos personalizados | TOML (`keymap.toml`, solo las diferencias con los de fábrica de Fireworks CS6), se valida al cargar y se detectan conflictos | `config_dir()` |
 | Archivos recientes | TOML (sección `[recent]` de `settings.toml`), máximo 10 | `config_dir()/settings.toml` |
 | Presets de exportación y de pinceles (futuro) | SQLite (`rusqlite` embebido) cuando existan; pospuesto en la fase 2 porque para 10 rutas no compensa el código C | `data_dir()/library.db` |
-| Recuperación y logs | Archivos | `cache_dir()` / `data_local_dir()` |
+| Documentos con capas | OpenRaster `.ora` (`pyro-formats::ora`, zip + `stack.xml`) | donde elija el usuario |
+| Recuperación y logs | `.ora` + TOML por sesión; logs diarios | `data_dir()/recovery/`, `data_dir()/logs/` |
 | REST | `ureq` + `rustls`, **solo HTTPS**, *timeouts*, *user-agent* genérico | `pyro-services::net` |
 
-Las rutas salen del crate `directories`, así que cada SO usa su convención (ver §6). Hoy REST solo se usa para el feed de actualizaciones. El módulo `net` es el punto de extensión para integraciones futuras (almacenamiento en la nube, bibliotecas de recursos).
+Las rutas salen de `pyro-platform::paths` (`config_dir()`, `data_dir()`), con la convención de cada SO (ver §6). Hoy REST solo se usa para el feed de actualizaciones. El módulo `net` es el punto de extensión para integraciones futuras (almacenamiento en la nube, bibliotecas de recursos).
 
 ---
 
@@ -162,9 +163,10 @@ Se descartan Tauri y Electron por los criterios con más peso. Flutter y Qt obli
 | Rutas | propias, en `pyro-platform::paths` (`APPDATA`, `HOME`, `XDG_CONFIG_HOME`); `directories` arrastra `option-ext` (MPL-2.0) | |
 | "Mostrar en carpeta" | `pyro-platform::reveal`: `explorer /select`, `open -R`, `FileManager1` por D-Bus o `xdg-open` | |
 | Preferencias | `serde`, `toml` | |
+| OpenRaster | `zip` (≥ 9.0.5, solo `deflate`), `quick-xml` | `.ora` con capas |
 | Base de datos | `rusqlite` (feature `bundled`), cuando haya presets | |
 | HTTP | `ureq` + `rustls` | Sin OpenSSL, la misma pila TLS en los 3 SO |
-| Logs | `tracing`, `tracing-appender` | |
+| Registro de fallos | propio (`pyro-services::crashlog`, panic hook) | Sin `tracing` por ahora |
 | Errores | `thiserror`, `anyhow` | |
 | Iconos | Fuente Lucide (ISC) en subconjunto | Sin `resvg` (MPL-2.0) |
 | Empaquetado y actualizaciones | `cargo-packager`, `cargo-packager-updater`, `cargo-generate-rpm` | Ver §8 |
@@ -309,9 +311,9 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RF-05 | Pincel, borrador, tampón de clonar, desenfocar, bote, cuentagotas | ✔ |
 | RF-06 | Ajustes y filtros con vista previa: brillo/contraste, tono/saturación, niveles, desenfoque, enfoque, invertir, escala de grises | ◐ (la vista previa bloquea la UI) |
 | RF-07 | Exportar optimizado: PNG-8/24/32, JPEG, GIF, WebP, con tamaño estimado | ✔ |
-| RF-08 | **Formato nativo con capas** (OpenRaster `.ora`, estándar abierto compatible con GIMP y Krita) | ○ |
-| RF-09 | Autoguardado y recuperación tras un cierre inesperado | ○ |
-| RF-10 | Deshacer/rehacer por diferencias de bloques (✔, fase 3) y panel de historial (fase 4) | ◐ |
+| RF-08 | **Formato nativo con capas** (OpenRaster `.ora`, estándar abierto compatible con GIMP y Krita) | ✔ |
+| RF-09 | Autoguardado y recuperación tras un cierre inesperado | ✔ |
+| RF-10 | Deshacer/rehacer por diferencias de bloques y panel de historial | ✔ |
 | RF-11 | Portapapeles: copiar y pegar la selección o la imagen como píxeles con otras apps; pegar como nueva capa o nuevo documento | ○ |
 | RF-12 | Arrastrar y soltar archivos al lienzo (abrir) o al panel de capas (añadir como capa); arrastrar hacia fuera para exportar | ◐ (solo abrir) |
 | RF-13 | Atajos de teclado configurables, con detección de conflictos e importación/exportación (de fábrica, los de Fireworks CS6: `docs/ATAJOS.md`) | ✔ |
@@ -321,7 +323,7 @@ Temas: **Seguir al sistema** (por defecto; si el SO no informa, oscuro), **Claro
 | RF-17 | Notificación nativa al terminar una exportación o un lote largo **solo si la ventana no tiene foco** | ○ |
 | RF-18 | Comprobación de actualizaciones (manual o automática, desactivable) e instalación firmada | ○ |
 | RF-19 | Asociación de archivos (`.ora`, opcionalmente `.png`) y abrir desde el gestor de archivos o "Abrir con" | ◐ (solo argumento de línea de comandos en Windows) |
-| RF-20 | Varios documentos en pestañas | ○ |
+| RF-20 | Varios documentos en pestañas | ✔ |
 | RF-21 | Idiomas: español (por defecto) e inglés, con `fluent` | ○ |
 | RF-22 | Exportación por lotes (carpeta → formato) | ○ (futuro) |
 
@@ -369,7 +371,7 @@ Documento de 4096×4096 con 3 capas, `--release`, en la máquina del autor (Wind
 | RNF-E1 | Archivos dañados (truncados, longitudes y CRC imposibles, cabeceras absurdas, 200 entradas al azar) | ningún `panic` | — |
 | RNF-S1 | Cabeceras de 40 000×10 y 30 000×30 000 | rechazadas en < 100 ms sin reservar memoria | — |
 
-El fuzzing (`fuzz/`, `cargo-fuzz`: `open_bytes` e `inspect_png`) corre cada noche 10 min por objetivo en `.github/workflows/fuzz.yml`. La parte «se pierde como máximo el trabajo de 2 min» de RNF-E1 es de la fase 4 (autoguardado).
+El fuzzing (`fuzz/`, `cargo-fuzz`: `open_bytes`, `inspect_png` y `open_ora`) corre cada noche 10 min por objetivo en `.github/workflows/fuzz.yml`. La parte «se pierde como máximo el trabajo de 2 min» de RNF-E1 la cubre el autoguardado de la fase 4.
 
 ---
 
@@ -494,7 +496,7 @@ La compilación de release usa `lto = "fat"`, `codegen-units = 1`, `panic = "unw
 | **1. Sistema de diseño** ✔ | Tokens neutros, temas claro/oscuro/alto contraste, Inter y JetBrains Mono, iconos, estados por inversión, escala de UI | Snapshots de referencia aprobados por el autor (2026-11-16; `crates/pyro-ui/tests/snapshots/`) |
 | **2. Comandos y preferencias** ✔ | Catálogo de comandos, atajos de Fireworks configurables, paleta Ctrl+K, preferencias y recientes en TOML, Mostrar en carpeta | RF-13 a RF-15, y RF-16 en lo que ya existe (spec `docs/superpowers/specs/2026-11-17-fase2-comandos-preferencias-design.md`) |
 | **3. No bloqueo y memoria** ✔ | Tareas con progreso y cancelación (`pyro-services::jobs`), historial por diferencias de bloques, lienzo por bloques, límites de decodificación, fuzzing | RNF-P3, P4 y E1 medidos (§5.3; spec `docs/superpowers/specs/2026-11-19-fase3-no-bloqueo-memoria-design.md`) |
-| **4. Formato nativo y recuperación** | `.ora`, autoguardado, panic hook, pestañas | RF-08 a RF-10, RF-20 |
+| **4. Formato nativo y recuperación** ✔ | Pestañas, Guardar en `.ora`, autoguardado y recuperación por sesión, registro de fallos, panel de historial | RF-08 a RF-10, RF-20 (spec `docs/superpowers/specs/2026-11-21-fase4-documentos-recuperacion-design.md`) |
 | **5. Integración de escritorio** | Portapapeles de imagen, arrastrar y soltar completo, notificaciones, menú macOS, asociación de archivos, instancia única | RF-11, 12, 17, 19 |
 | **6. Distribución** ◐ | Paquetes de los 6 formatos ✔ (más NSIS), feed y updater ✔, firma de código y notarización (pendientes, decisión 9.2-1) | Instalar → actualizar → desinstalar en VMs limpias |
 | **7. Accesibilidad y pulido** | Auditoría WCAG 2.2 con lectores de pantalla reales, i18n en/es | Lista de comprobación de §7 al 100 % |
