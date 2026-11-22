@@ -89,7 +89,14 @@ impl PyroApp {
     /// Cierra la activa sin preguntar. La ventana nunca queda sin documento.
     pub(super) fn close_active_tab(&mut self) {
         let mut all = self.take_tabs();
-        all.remove(self.active);
+        let closed = all.remove(self.active);
+        // Cerrar (guardando o descartando) borra su autoguardado.
+        if let Some(recovery) = &self.recovery {
+            recovery.remove(closed.uid);
+        }
+        if let Some(old) = &closed.recovered_from {
+            pyro_services::recovery::Recovery::discard(old);
+        }
         if all.is_empty() {
             let n = self.next_untitled();
             all.push(Tab::new(Document::new(800, 600, Some([255, 255, 255, 255])), n));

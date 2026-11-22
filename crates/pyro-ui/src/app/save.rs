@@ -140,8 +140,16 @@ impl PyroApp {
         }
     }
 
-    /// Tras guardar bien una pestaña (la tarea 6 borra aquí su autoguardado).
-    pub(super) fn after_save(&mut self, _uid: u64) {}
+    /// Tras guardar bien una pestaña: su autoguardado (y el recuperado de
+    /// otra sesión, si lo había) ya no hacen falta.
+    pub(super) fn after_save(&mut self, uid: u64) {
+        self.forget_autosave(uid);
+        if let Some(i) = (0..self.tab_count()).find(|&i| self.tab_at(i).uid == uid) {
+            if let Some(old) = self.tab_at_mut(i).recovered_from.take() {
+                pyro_services::recovery::Recovery::discard(&old);
+            }
+        }
+    }
 
     /// Texto de la barra de estado cuando hay cambios sin guardar.
     pub(super) fn history_status_label(&self) -> &'static str {

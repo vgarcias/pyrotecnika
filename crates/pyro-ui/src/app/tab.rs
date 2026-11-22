@@ -11,15 +11,16 @@ use pyro_core::document::Document;
 use pyro_core::history::History;
 use pyro_formats::fwpng::FwInfo;
 
+use super::autosave::AutosaveTask;
 use super::canvas_tiles::{Dirty, Tiles};
 use super::dialogs::{ExportDialog, FilterDialog};
 use super::save::SaveTask;
 use super::tasks::DocTask;
 use super::tools::Drag;
+use pyro_services::recovery::RecoveryEntry;
 
 pub(super) struct Tab {
     /// Identidad única en la sesión (autoguardado, tareas).
-    #[allow(dead_code)] // se usa desde la tarea 6 (autoguardado)
     pub(super) uid: u64,
     /// Número de «Sin título N», o 0 si el documento viene de un archivo.
     pub(super) untitled: u32,
@@ -44,6 +45,13 @@ pub(super) struct Tab {
     pub(super) ora_path: Option<PathBuf>,
     /// Guardado en curso (no bloquea la edición).
     pub(super) save: Option<SaveTask>,
+    /// Posición del historial del último autoguardado.
+    pub(super) autosaved_position: Option<u64>,
+    /// Autoguardado en curso.
+    pub(super) autosave: Option<AutosaveTask>,
+    /// Autoguardado de una sesión anterior del que se recuperó la pestaña;
+    /// se borra en cuanto esta sesión la autoguarda, guarda o cierra.
+    pub(super) recovered_from: Option<RecoveryEntry>,
     pub(super) png_info: Option<FwInfo>,
     /// Tarea en segundo plano que va a cambiar el documento (abrir, filtro).
     pub(super) task: Option<DocTask>,
@@ -75,6 +83,9 @@ impl Tab {
             source_path: None,
             ora_path: None,
             save: None,
+            autosaved_position: None,
+            autosave: None,
+            recovered_from: None,
             png_info: None,
             task: None,
             generation: 0,

@@ -397,3 +397,33 @@ fn descartar_todo() {
     assert!(h.state().closing);
     assert!(!dir.path().join("a.ora").exists());
 }
+
+// ---------- Autoguardado (tarea 6) ----------
+
+#[test]
+fn autoguarda_cada_dos_minutos() {
+    let data = tempfile::tempdir().unwrap();
+    let dir = data.path().to_path_buf();
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(move |cc| PyroApp::with_dirs(cc, None, Some(dir.clone())));
+    h.run_steps(2);
+    let ctx = h.ctx.clone();
+    h.state_mut().perform(Pending::New { width: 40, height: 30, transparent: false }, &ctx);
+    let untouched = h.state().tab.uid;
+    h.state_mut().perform(Pending::New { width: 40, height: 30, transparent: false }, &ctx);
+    paint(&mut h, 10.0, 10.0);
+    let edited = h.state().tab.uid;
+    let session = h.state().recovery.as_ref().unwrap().session_dir().to_path_buf();
+    h.run_steps(2);
+    assert!(!session.join(format!("{edited}.ora")).exists(), "aún no pasaron 2 min");
+    h.state_mut().clock_offset += Duration::from_secs(121);
+    h.run_steps(1);
+    let start = Instant::now();
+    while !session.join(format!("{edited}.toml")).exists() && start.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(5));
+        h.run_steps(1);
+    }
+    assert!(session.join(format!("{edited}.ora")).exists());
+    assert!(!session.join(format!("{untouched}.ora")).exists(), "sin cambios no se autoguarda");
+}

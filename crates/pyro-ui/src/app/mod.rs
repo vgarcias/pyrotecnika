@@ -2,6 +2,7 @@
 //!
 //! Cada submódulo añade métodos a [`PyroApp`] para un área de la interfaz.
 
+mod autosave;
 mod canvas;
 #[cfg(test)]
 mod canvas_tests;
@@ -118,6 +119,13 @@ pub struct PyroApp {
     quit_after_saves: bool,
     /// Ventana de salir con varias pestañas con cambios.
     quit_window: bool,
+    /// Carpeta de autoguardado de esta sesión (`None` sin carpeta de datos).
+    recovery: Option<pyro_services::recovery::Recovery>,
+    last_heartbeat: std::time::Instant,
+    last_autosave: std::time::Instant,
+    /// Adelanto del reloj del autoguardado en las pruebas.
+    #[cfg(test)]
+    pub(super) clock_offset: std::time::Duration,
     /// Ruta que devuelve el diálogo de Guardar en las pruebas.
     #[cfg(test)]
     pub(super) save_dialog_override: Option<Option<PathBuf>>,
@@ -163,12 +171,18 @@ pub struct PyroApp {
 
 impl PyroApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::with_config(cc, pyro_platform::paths::config_dir())
+        Self::with_dirs(cc, pyro_platform::paths::config_dir(), pyro_platform::paths::data_dir())
     }
 
     /// La app con la configuración de `dir` (`None`: no se lee ni se guarda
-    /// nada, como en las pruebas).
+    /// nada, como en las pruebas) y sin autoguardado.
+    #[cfg(test)]
     pub(crate) fn with_config(cc: &eframe::CreationContext<'_>, dir: Option<PathBuf>) -> Self {
+        Self::with_dirs(cc, dir, None)
+    }
+
+    /// La app con carpeta de configuración y carpeta de datos (autoguardado).
+    pub(crate) fn with_dirs(cc: &eframe::CreationContext<'_>, dir: Option<PathBuf>, data_dir: Option<PathBuf>) -> Self {
         crate::design::style::install(&cc.egui_ctx);
         let ctx = cc.egui_ctx.clone();
         pyro_platform::open_files::set_waker(move || ctx.request_repaint());
@@ -186,6 +200,11 @@ impl PyroApp {
             drop_focus: false,
             quit_after_saves: false,
             quit_window: false,
+            recovery: data_dir.and_then(|d| pyro_services::recovery::Recovery::start(&d).ok()),
+            last_heartbeat: std::time::Instant::now(),
+            last_autosave: std::time::Instant::now(),
+            #[cfg(test)]
+            clock_offset: std::time::Duration::ZERO,
             #[cfg(test)]
             save_dialog_override: None,
             #[cfg(test)]
@@ -527,6 +546,13 @@ impl PyroApp {
 }
 
 impl eframe::App for PyroApp {
+    /// Cierre normal: no queda nada que recuperar.
+    fn on_exit(&mut self) {
+        if let Some(recovery) = self.recovery.take() {
+            recovery.finish();
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Archivos de la línea de comandos o del sistema (Finder en macOS).
         // Se abren aquí, y no al crear la app, porque hasta el primer cuadro
@@ -563,6 +589,7 @@ impl eframe::App for PyroApp {
         // mismo cuadro gana al resultado que acaba de llegar.
         self.poll_task();
         self.poll_saves(ctx);
+        self.tick_autosave(ctx);
         self.enforce_history_budget();
         if self.tab.dirty != Dirty::None || self.tab.sel_dirty {
             ctx.request_repaint();

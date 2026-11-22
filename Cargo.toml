@@ -16,6 +16,7 @@ pyro-core = { path = "crates/pyro-core" }
 pyro-formats = { path = "crates/pyro-formats" }
 pyro-platform = { path = "crates/pyro-platform" }
 pyro-services = { path = "crates/pyro-services" }
+
 pyro-ui = { path = "crates/pyro-ui" }
 
 anyhow = "1"
@@ -27,6 +28,8 @@ rfd = "0.15"
 # Backend wgpu: Metal en macOS, DX12/Vulkan en Windows, Vulkan/GL en Linux.
 eframe = { version = "0.31", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
 crc32fast = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 rayon = "1"
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 quick-xml = "0.37"

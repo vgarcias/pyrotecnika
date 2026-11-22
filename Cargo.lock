@@ -2769,7 +2769,12 @@ dependencies = [
 name = "pyro-services"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "pyro-core",
+ "pyro-formats",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
 ]
 
 [[package]]
