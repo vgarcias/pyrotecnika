@@ -189,3 +189,136 @@ fn presupuesto_comun() {
     let total: usize = (0..app.tab_count()).map(|i| app.tab_at(i).history.bytes()).sum();
     assert!(total <= MEMORY_BUDGET, "{total}");
 }
+
+// ---------- Guardar (tarea 4) ----------
+
+/// Avanza hasta que ninguna pestaña esté guardando.
+fn wait_saves(h: &mut Harness<'static, PyroApp>) {
+    let start = Instant::now();
+    while (0..h.state().tab_count()).any(|i| h.state().tab_at(i).save.is_some())
+        && start.elapsed() < Duration::from_secs(5)
+    {
+        std::thread::sleep(Duration::from_millis(2));
+        h.run_steps(1);
+    }
+    h.run_steps(1);
+}
+
+fn save_to(h: &mut Harness<'static, PyroApp>, path: Option<PathBuf>) {
+    h.state_mut().save_dialog_override = Some(path);
+}
+
+#[test]
+fn guardar_un_documento_nuevo_pide_ruta() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    paint(&mut h, 300.0, 100.0);
+    let target = dir.path().join("x.ora");
+    save_to(&mut h, Some(target.clone()));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::S);
+    h.run_steps(1);
+    wait_saves(&mut h);
+    let back = pyro_formats::ora::decode_ora(&std::fs::read(&target).unwrap(), &NoMonitor).unwrap();
+    assert_eq!(back.document.layers.len(), h.state().tab.doc.layers.len());
+    assert!(!h.state().tab.history.is_modified());
+    assert_eq!(h.state().tab_title(h.state().active), "x.ora");
+}
+
+#[test]
+fn guardar_como_propone_ora_junto_al_origen() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "cenote.png", 40, 30));
+    assert_eq!(super::save::suggested_save_path(&h.state().tab), dir.path().join("cenote.ora"));
+}
+
+#[test]
+fn nunca_sobrescribe_el_png() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    let original = png(dir.path(), "cenote.png", 40, 30);
+    let bytes = std::fs::read(&original).unwrap();
+    open(&mut h, &original);
+    paint(&mut h, 10.0, 10.0);
+    save_to(&mut h, Some(original.clone()));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::S);
+    h.run_steps(1);
+    wait_saves(&mut h);
+    assert!(matches!(h.state().status.tone, super::guard::Tone::Error));
+    assert_eq!(std::fs::read(&original).unwrap(), bytes);
+}
+
+#[test]
+fn editar_mientras_se_guarda_mantiene_la_marca() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    let target = dir.path().join("x.ora");
+    let before = h.state().tab.doc.composite();
+    paint(&mut h, 200.0, 150.0);
+    let saved = h.state().tab.doc.composite();
+    save_to(&mut h, Some(target.clone()));
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::Save, &ctx);
+    paint(&mut h, 250.0, 180.0);
+    wait_saves(&mut h);
+    assert!(h.state().tab.history.is_modified());
+    let back = pyro_formats::ora::decode_ora(&std::fs::read(&target).unwrap(), &NoMonitor).unwrap();
+    assert!(back.document.composite() == saved);
+    assert!(saved != before);
+}
+
+#[test]
+fn exportar_ya_no_quita_la_marca() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    paint(&mut h, 200.0, 150.0);
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::Export, &ctx);
+    let start = Instant::now();
+    while h.state().tab.export_dialog.as_ref().is_some_and(|d| d.bytes.is_none())
+        && start.elapsed() < Duration::from_secs(3)
+    {
+        std::thread::sleep(Duration::from_millis(2));
+        h.run_steps(1);
+    }
+    h.state_mut().export_override = Some(dir.path().join("out.png"));
+    h.state_mut().save_export();
+    assert!(dir.path().join("out.png").exists());
+    assert!(h.state().tab.history.is_modified());
+    assert_eq!(h.state().history_status_label(), "Cambios sin guardar");
+}
+
+#[test]
+fn guardar_y_cerrar() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "a.png", 40, 30));
+    paint(&mut h, 10.0, 10.0);
+    let count = h.state().tab_count();
+    save_to(&mut h, Some(dir.path().join("a.ora")));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(2);
+    h.get_by_label("Guardar").click();
+    h.run_steps(1);
+    wait_saves(&mut h);
+    h.run_steps(2);
+    assert!(dir.path().join("a.ora").exists());
+    assert_eq!(h.state().tab_count(), count - 1);
+}
+
+#[test]
+fn fallo_al_guardar_avisa_y_no_cierra() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "a.png", 40, 30));
+    paint(&mut h, 10.0, 10.0);
+    let count = h.state().tab_count();
+    save_to(&mut h, Some(dir.path().join("no/existe/a.ora")));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(2);
+    h.get_by_label("Guardar").click();
+    h.run_steps(1);
+    wait_saves(&mut h);
+    assert!(matches!(h.state().status.tone, super::guard::Tone::Error));
+    assert_eq!(h.state().tab_count(), count);
+}

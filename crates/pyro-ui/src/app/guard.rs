@@ -8,7 +8,7 @@ use eframe::egui;
 
 use pyro_core::document::Document;
 
-use super::{icons, Action, PyroApp};
+use super::{icons, PyroApp};
 use crate::design::widgets;
 
 /// Severidad de un mensaje de la barra de estado.
@@ -42,7 +42,7 @@ pub(super) enum Pending {
 }
 
 enum Choice {
-    Export,
+    Save,
     Discard,
     Cancel,
 }
@@ -169,7 +169,18 @@ impl PyroApp {
                 self.add_tab(super::tab::Tab::new(Document::new(width, height, bg), n));
                 self.info("Documento nuevo.");
             }
-            Pending::CloseTab => self.close_active_tab(),
+            Pending::CloseTab => match &mut self.tab.save {
+                // Cerrar espera a que termine el guardado de la pestaña.
+                Some(save) => {
+                    save.then = Some(Pending::CloseTab);
+                    self.info("Guardando…");
+                }
+                None => self.close_active_tab(),
+            },
+            Pending::Quit if self.any_saving() => {
+                self.quit_after_saves = true;
+                self.info("Guardando…");
+            }
             Pending::Quit => {
                 self.closing = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -182,7 +193,12 @@ impl PyroApp {
     /// Intercepta el cierre de la ventana (botón, Alt+F4, Archivo › Salir).
     pub(super) fn guard_close(&mut self, ctx: &egui::Context) {
         let requested = ctx.input(|i| i.viewport().close_requested());
-        if requested && !self.closing && self.any_modified() {
+        if requested && !self.closing && self.any_saving() {
+            // Salir espera a los guardados en curso.
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.quit_after_saves = true;
+            self.info("Guardando…");
+        } else if requested && !self.closing && self.any_modified() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Pending::Quit);
             self.confirm_focus = true;
@@ -198,18 +214,6 @@ impl PyroApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.title = title;
         }
-    }
-
-    /// Qué ocurrirá después de guardar la exportación, si hay algo pendiente.
-    pub(super) fn after_export_hint(&self) -> Option<String> {
-        Some(match self.tab.after_export.as_ref()? {
-            Pending::Open(path) => format!("Después de guardar se abrirá «{}».", short_name(path)),
-            Pending::New { .. } => "Después de guardar se creará el documento nuevo.".into(),
-            Pending::Quit => "Después de guardar se cerrará Pyrotecnika.".into(),
-            Pending::CloseTab => "Después de guardar se cerrará la pestaña.".into(),
-            Pending::InstallUpdate => "Después de guardar se instalará la actualización.".into(),
-            Pending::Restart => "Después de guardar se reiniciará Pyrotecnika.".into(),
-        })
     }
 
     pub(super) fn confirm_window(&mut self, ctx: &egui::Context) {
@@ -240,26 +244,20 @@ impl PyroApp {
                 ("¿Reiniciar y descartar los cambios?".to_string(), "Si reinicias ahora, esos cambios se pierden.")
             }
         };
-        let layers = self.tab.doc.layers.len();
+        let name = self.tab_title(self.active);
         let focus = std::mem::take(&mut self.confirm_focus);
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::new("confirmar-descartar")).show(ctx, |ui| {
             ui.set_max_width(440.0);
             ui.heading(title);
             ui.add_space(8.0);
-            ui.label(format!("El documento actual tiene cambios sin exportar. {consequence}"));
-            if layers > 1 {
-                ui.add_space(4.0);
-                ui.label(format!(
-                    "Exportar guarda la imagen aplanada: las {layers} capas no se conservan en el archivo."
-                ));
-            }
+            ui.label(format!("«{name}» tiene cambios sin guardar. {consequence}"));
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if widgets::button(ui, "Exportar primero…").clicked() {
-                    choice = Some(Choice::Export);
+                if widgets::button(ui, "Guardar").clicked() {
+                    choice = Some(Choice::Save);
                 }
-                if widgets::button(ui, "Descartar cambios").clicked() {
+                if widgets::button(ui, "Descartar").clicked() {
                     choice = Some(Choice::Discard);
                 }
                 // Cancelar recibe el foco: Intro o Espacio nunca descartan.
@@ -283,12 +281,9 @@ impl PyroApp {
                     self.perform(pending, ctx);
                 }
             }
-            Some(Choice::Export) => {
+            Some(Choice::Save) => {
                 let pending = self.confirm.take();
-                self.run(Action::Export, ctx);
-                if self.tab.export_dialog.is_some() {
-                    self.tab.after_export = pending;
-                }
+                self.save(false, pending, ctx);
             }
         }
     }

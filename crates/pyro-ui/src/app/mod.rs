@@ -17,6 +17,7 @@ mod medir_tests;
 mod palette;
 mod panels;
 mod prefs;
+mod save;
 #[cfg(test)]
 mod scenes;
 mod shortcuts;
@@ -91,6 +92,8 @@ pub(crate) enum Action {
     OpenRecent(usize),
     ClearRecent,
     RevealInFolder,
+    Save,
+    SaveAs,
     NextTab,
     PrevTab,
     /// Cierra la pestaña activa (pregunta si tiene cambios).
@@ -111,6 +114,14 @@ pub struct PyroApp {
     untitled_next: u32,
     /// Soltar el foco al final del cuadro (tras Ctrl+Tab).
     drop_focus: bool,
+    /// Salir en cuanto acaben los guardados en curso.
+    quit_after_saves: bool,
+    /// Ruta que devuelve el diálogo de Guardar en las pruebas.
+    #[cfg(test)]
+    pub(super) save_dialog_override: Option<Option<PathBuf>>,
+    /// Ruta que devuelve el diálogo de Exportar en las pruebas.
+    #[cfg(test)]
+    pub(super) export_override: Option<PathBuf>,
     tool: Tool,
     brush: BrushParams,
     tolerance: u8,
@@ -171,6 +182,11 @@ impl PyroApp {
             active: 0,
             untitled_next: 2,
             drop_focus: false,
+            quit_after_saves: false,
+            #[cfg(test)]
+            save_dialog_override: None,
+            #[cfg(test)]
+            export_override: None,
             tool: Tool::Brush,
             brush: BrushParams::default(),
             tolerance: 32,
@@ -277,6 +293,12 @@ impl PyroApp {
         let mut tab = tab::Tab::new(doc, 0);
         tab.png_info = opened.png_info;
         tab.source_path = Some(path.clone());
+        if opened.is_ora {
+            tab.ora_path = Some(path.clone());
+        }
+        if !opened.warnings.is_empty() {
+            self.warn(format!("{} {}", self.status.text, opened.warnings.join(" ")));
+        }
         self.add_tab(tab);
         self.settings.recent.push(path);
         self.save_settings();
@@ -292,7 +314,6 @@ impl PyroApp {
         self.tab.clone_source = None;
         self.tab.filter_dialog = None;
         self.tab.export_dialog = None;
-        self.tab.after_export = None;
         self.tab.png_info = None;
         self.tab.source_path = None;
         self.tab.fit_pending = true;
@@ -348,6 +369,8 @@ impl PyroApp {
             Action::Open => self.pick_and_open(ctx),
             Action::Export => self.tab.export_dialog = Some(ExportDialog::new(self.tab.doc.composite())),
             Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::Save => self.save(false, None, ctx),
+            Action::SaveAs => self.save(true, None, ctx),
             Action::NextTab => self.switch_to((self.active + 1) % self.tab_count()),
             Action::PrevTab => self.switch_to((self.active + self.tab_count() - 1) % self.tab_count()),
             Action::SwitchTab(i) => self.switch_to(i),
@@ -535,6 +558,7 @@ impl eframe::App for PyroApp {
         // Después de la entrada y la interfaz: un «Cancelar» o Esc de este
         // mismo cuadro gana al resultado que acaba de llegar.
         self.poll_task();
+        self.poll_saves(ctx);
         self.enforce_history_budget();
         if self.tab.dirty != Dirty::None || self.tab.sel_dirty {
             ctx.request_repaint();

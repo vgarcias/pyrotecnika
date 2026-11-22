@@ -126,7 +126,16 @@ pub(super) struct NewDialog {
 }
 
 impl PyroApp {
-    pub(super) fn save_export(&mut self, ctx: &egui::Context) {
+    /// Pide dónde exportar (en pruebas, `export_override`).
+    fn pick_export_path(&mut self, label: &str, ext: &str, name: String) -> Option<std::path::PathBuf> {
+        #[cfg(test)]
+        if let Some(path) = self.export_override.take() {
+            return Some(path);
+        }
+        rfd::FileDialog::new().add_filter(label, &[ext]).set_file_name(name).save_file()
+    }
+
+    pub(super) fn save_export(&mut self) {
         let Some(dlg) = &self.tab.export_dialog else {
             return;
         };
@@ -140,11 +149,8 @@ impl PyroApp {
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().split('.').next().unwrap_or("imagen").to_string())
             .unwrap_or_else(|| "imagen".into());
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter(format.label(), &[ext])
-            .set_file_name(format!("{stem}.{ext}"))
-            .save_file()
-        else {
+        let bytes = bytes.clone();
+        let Some(path) = self.pick_export_path(format.label(), ext, format!("{stem}.{ext}")) else {
             return;
         };
         let is_fw_source = self.tab.png_info.as_ref().is_some_and(FwInfo::is_fireworks);
@@ -154,7 +160,7 @@ impl PyroApp {
                     .to_string(),
             )
         } else {
-            std::fs::write(&path, bytes).err().map(|e| {
+            std::fs::write(&path, &bytes).err().map(|e| {
                 format!(
                     "No se pudo guardar «{}»: {}. Elige otra ubicación.",
                     guard::short_name(&path),
@@ -169,15 +175,11 @@ impl PyroApp {
             self.fail(message);
             return;
         }
+        // Exportar no quita la marca de cambios: las capas solo se conservan
+        // al Guardar en .ora.
         self.info(format!("Exportado {} ({})", path.display(), format_size(bytes.len())));
-        self.tab.history.mark_saved();
         if let Some(dlg) = &mut self.tab.export_dialog {
             dlg.save_error = None;
-        }
-        // Si la exportación venía de «Exportar primero», sigue con lo pendiente.
-        if let Some(pending) = self.tab.after_export.take() {
-            self.tab.export_dialog = None;
-            self.perform(pending, ctx);
         }
     }
 
@@ -283,7 +285,6 @@ impl PyroApp {
     }
 
     pub(super) fn export_window(&mut self, ctx: &egui::Context) {
-        let after_hint = self.after_export_hint();
         let Some(dlg) = &mut self.tab.export_dialog else {
             return;
         };
@@ -398,18 +399,14 @@ impl PyroApp {
             if let Some(e) = &dlg.save_error {
                 guard::notice(ui, Tone::Error, e);
             }
-            if let Some(hint) = &after_hint {
-                ui.label(hint);
-            }
             if ui.add_enabled_ui(ready, |ui| widgets::primary_button(ui, "Guardar…")).inner.clicked() {
                 save = true;
             }
         });
         if !open {
             self.tab.export_dialog = None;
-            self.tab.after_export = None;
         } else if save {
-            self.save_export(ctx);
+            self.save_export();
         }
     }
 

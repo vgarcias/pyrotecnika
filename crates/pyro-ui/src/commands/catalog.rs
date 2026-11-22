@@ -69,6 +69,8 @@ pub(crate) const PLAIN_KEY_DEFAULTS: &[&str] = &["Delete", "Backspace", "OpenBra
 pub(crate) static CATALOG: &[CommandDef] = &[
     def("file.new", "Nuevo…", File, Action::New, &["Ctrl+N"]),
     def("file.open", "Abrir…", File, Action::Open, &["Ctrl+O"]),
+    def("file.save", "Guardar", File, Action::Save, &["Ctrl+S"]),
+    def("file.save_as", "Guardar como…", File, Action::SaveAs, &["Ctrl+Shift+S"]),
     def("file.export", "Exportar…", File, Action::Export, &["Ctrl+Shift+R"]),
     def("file.reveal", "Mostrar en carpeta", File, Action::RevealInFolder, &[]),
     def("file.clear_recent", "Limpiar lista de recientes", File, Action::ClearRecent, &[]),
@@ -168,6 +170,8 @@ mod tests {
         let want: &[(&str, &[&str])] = &[
             ("file.new", &["Ctrl+N"]),
             ("file.open", &["Ctrl+O"]),
+            ("file.save", &["Ctrl+S"]),
+            ("file.save_as", &["Ctrl+Shift+S"]),
             ("file.export", &["Ctrl+Shift+R"]),
             ("file.quit", &["Ctrl+Q"]),
             ("edit.undo", &["Ctrl+Z"]),

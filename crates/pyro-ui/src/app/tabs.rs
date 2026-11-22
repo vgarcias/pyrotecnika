@@ -106,12 +106,15 @@ impl PyroApp {
 
     /// Pestaña que ya tiene abierto `path`, si la hay.
     pub(super) fn find_tab(&self, path: &Path) -> Option<usize> {
-        (0..self.tab_count()).find(|&i| self.tab_at(i).source_path.as_deref().is_some_and(|p| same_file(p, path)))
+        (0..self.tab_count()).find(|&i| {
+            let tab = self.tab_at(i);
+            [&tab.source_path, &tab.ora_path].into_iter().flatten().any(|p| same_file(p, path))
+        })
     }
 
     pub(super) fn tab_title(&self, i: usize) -> String {
         let tab = self.tab_at(i);
-        match (&tab.source_path, tab.untitled) {
+        match (tab.ora_path.as_ref().or(tab.source_path.as_ref()), tab.untitled) {
             (Some(path), _) => guard::short_name(path),
             (None, n) => format!("Sin título {}", n.max(1)),
         }

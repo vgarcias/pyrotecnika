@@ -21,7 +21,8 @@ impl PyroApp {
                 ui.menu_button("Archivo", |ui| {
                     self.menu_items(ui, &mut action, &["file.new", "file.open"]);
                     ui.menu_button("Abrir reciente", |ui| self.recent_menu(ui, &mut action));
-                    self.menu_items(ui, &mut action, &["file.export", "file.reveal"]);
+                    ui.separator();
+                    self.menu_items(ui, &mut action, &["file.save", "file.save_as", "file.export", "file.reveal"]);
                     ui.separator();
                     self.menu_items(ui, &mut action, &["file.quit"]);
                 });
@@ -148,7 +149,7 @@ impl PyroApp {
                 }
                 ui.separator();
                 if self.tab.history.is_modified() {
-                    ui.label("Cambios sin exportar");
+                    ui.label(self.history_status_label());
                     ui.separator();
                 }
                 self.task_status(ui);

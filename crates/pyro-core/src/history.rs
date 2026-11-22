@@ -311,6 +311,18 @@ impl History {
         }
     }
 
+    /// Posición actual en la línea de cambios (para guardar una instantánea
+    /// y marcarla luego con [`History::mark_saved_at`]).
+    pub fn position(&self) -> u64 {
+        self.position
+    }
+
+    /// Marca como guardada la posición `position` (la de la instantánea que
+    /// se escribió); si se editó entretanto, el documento sigue modificado.
+    pub fn mark_saved_at(&mut self, position: u64) {
+        self.saved = Some(position);
+    }
+
     /// Marca el estado actual como guardado.
     pub fn mark_saved(&mut self) {
         self.saved = Some(self.position);

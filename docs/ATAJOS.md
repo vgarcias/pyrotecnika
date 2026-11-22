@@ -8,6 +8,8 @@ Este archivo se genera desde el catálogo de comandos (`crates/pyro-ui/src/comma
 |---|---|---|
 | Archivo | Nuevo… | Ctrl+N |
 | Archivo | Abrir… | Ctrl+O |
+| Archivo | Guardar | Ctrl+S |
+| Archivo | Guardar como… | Ctrl+Mayús+S |
 | Archivo | Exportar… | Ctrl+Mayús+R |
 | Archivo | Mostrar en carpeta | — |
 | Archivo | Limpiar lista de recientes | — |

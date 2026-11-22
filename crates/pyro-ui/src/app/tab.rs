@@ -13,7 +13,7 @@ use pyro_formats::fwpng::FwInfo;
 
 use super::canvas_tiles::{Dirty, Tiles};
 use super::dialogs::{ExportDialog, FilterDialog};
-use super::guard::Pending;
+use super::save::SaveTask;
 use super::tasks::DocTask;
 use super::tools::Drag;
 
@@ -38,9 +38,12 @@ pub(super) struct Tab {
     pub(super) drag: Drag,
     pub(super) filter_dialog: Option<FilterDialog>,
     pub(super) export_dialog: Option<ExportDialog>,
-    /// Acción que continúa sola cuando la exportación en curso se guarda.
-    pub(super) after_export: Option<Pending>,
     pub(super) source_path: Option<PathBuf>,
+    /// Dónde se guarda con Guardar (Ctrl+S); `None` hasta el primer guardado
+    /// salvo que se abriera un `.ora`.
+    pub(super) ora_path: Option<PathBuf>,
+    /// Guardado en curso (no bloquea la edición).
+    pub(super) save: Option<SaveTask>,
     pub(super) png_info: Option<FwInfo>,
     /// Tarea en segundo plano que va a cambiar el documento (abrir, filtro).
     pub(super) task: Option<DocTask>,
@@ -69,8 +72,9 @@ impl Tab {
             drag: Drag::None,
             filter_dialog: None,
             export_dialog: None,
-            after_export: None,
             source_path: None,
+            ora_path: None,
+            save: None,
             png_info: None,
             task: None,
             generation: 0,
