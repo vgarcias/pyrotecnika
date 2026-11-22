@@ -11,6 +11,7 @@ mod canvas_tiles;
 mod commands_tests;
 mod dialogs;
 mod guard;
+mod history_panel;
 pub(crate) mod icons;
 mod input;
 #[cfg(test)]
@@ -328,6 +329,7 @@ impl PyroApp {
         self.info(message);
         // Siempre en una pestaña nueva (la «Sin título» intacta se sustituye).
         let mut tab = tab::Tab::new(doc, 0);
+        tab.history = pyro_core::history::History::new("Abierto");
         tab.png_info = opened.png_info;
         tab.source_path = Some(path.clone());
         if opened.is_ora {
@@ -371,10 +373,10 @@ impl PyroApp {
 
     /// Operación de capa con historial: la misma para botones, menú,
     /// teclado y paleta.
-    pub(super) fn layer_op(&mut self, f: fn(&mut Document) -> bool) {
+    pub(super) fn layer_op(&mut self, label: &'static str, f: fn(&mut Document) -> bool) {
         let before = self.tab.doc.clone();
         if f(&mut self.tab.doc) {
-            self.tab.history.push(&before);
+            self.tab.history.push(&before, label);
             self.tab.dirty = Dirty::All;
         }
     }
@@ -427,19 +429,19 @@ impl PyroApp {
                 }
             }
             Action::SelectAll => {
-                self.tab.history.push(&self.tab.doc);
+                self.tab.history.push(&self.tab.doc, "Selección");
                 self.tab.doc.selection = Some(Mask::full(self.tab.doc.width, self.tab.doc.height));
                 self.tab.sel_dirty = true;
             }
             Action::Deselect => {
                 if self.tab.doc.selection.is_some() {
-                    self.tab.history.push(&self.tab.doc);
+                    self.tab.history.push(&self.tab.doc, "Deseleccionar");
                     self.tab.doc.selection = None;
                     self.tab.sel_dirty = true;
                 }
             }
             Action::InvertSelection => {
-                self.tab.history.push(&self.tab.doc);
+                self.tab.history.push(&self.tab.doc, "Selección");
                 let mut m = self
                     .tab
                     .doc
@@ -453,7 +455,7 @@ impl PyroApp {
             Action::CropToSelection => {
                 let before = self.tab.doc.clone();
                 if self.tab.doc.crop_to_selection() {
-                    self.tab.history.push(&before);
+                    self.tab.history.push(&before, "Recortar");
                     self.tab.fit_pending = true;
                     self.mark_dirty();
                 } else {
@@ -466,7 +468,7 @@ impl PyroApp {
                         self.warn(reason);
                         return;
                     }
-                    self.tab.history.push(&self.tab.doc);
+                    self.tab.history.push(&self.tab.doc, "Borrar selección");
                     self.tab.doc.clear_selected();
                     self.tab.dirty = Dirty::All;
                 }
@@ -476,7 +478,7 @@ impl PyroApp {
                     self.warn(reason);
                     return;
                 }
-                self.tab.history.push(&self.tab.doc);
+                self.tab.history.push(&self.tab.doc, filter.name());
                 let backup = self.tab.doc.active_layer().pixels.clone();
                 if filter.has_params() {
                     self.tab.filter_dialog = Some(FilterDialog::new(filter, backup));
@@ -506,18 +508,18 @@ impl PyroApp {
                 ctx.set_zoom_factor(self.ui_scale);
                 self.save_settings();
             }
-            Action::LayerNew => self.layer_op(|d| {
+            Action::LayerNew => self.layer_op("Nueva capa", |d| {
                 d.add_layer();
                 true
             }),
-            Action::LayerDuplicate => self.layer_op(|d| {
+            Action::LayerDuplicate => self.layer_op("Duplicar capa", |d| {
                 d.duplicate_layer();
                 true
             }),
-            Action::LayerDelete => self.layer_op(Document::delete_layer),
-            Action::LayerUp => self.layer_op(Document::move_layer_up),
-            Action::LayerDown => self.layer_op(Document::move_layer_down),
-            Action::LayerMergeDown => self.layer_op(Document::merge_down),
+            Action::LayerDelete => self.layer_op("Eliminar capa", Document::delete_layer),
+            Action::LayerUp => self.layer_op("Subir capa", Document::move_layer_up),
+            Action::LayerDown => self.layer_op("Bajar capa", Document::move_layer_down),
+            Action::LayerMergeDown => self.layer_op("Combinar abajo", Document::merge_down),
             Action::SelectTool(tool) => self.tool = tool,
             Action::BrushSmaller => self.brush.radius = (self.brush.radius - 2.0).clamp(0.5, 250.0),
             Action::BrushBigger => self.brush.radius = (self.brush.radius + 2.0).clamp(0.5, 250.0),

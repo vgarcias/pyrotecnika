@@ -75,6 +75,7 @@ impl PyroApp {
             tab.label = Some(format!("{name} (recuperado)"));
         }
         // Tiene cambios sin guardar, pero no hay paso que deshacer.
+        tab.history = pyro_core::history::History::new("Recuperado");
         tab.history.mark_unsaved();
         tab.recovered_from = Some(entry);
         self.add_tab(tab);

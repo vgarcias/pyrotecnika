@@ -223,6 +223,8 @@ impl PyroApp {
                     self.tool_options(ui);
                     ui.separator();
                     self.layers_ui(ui);
+                    ui.separator();
+                    self.history_ui(ui);
                 });
                 if let Some(info) = self.tab.png_info.as_ref().filter(|i| i.is_fireworks()) {
                     ui.separator();
@@ -352,7 +354,7 @@ impl PyroApp {
             });
         }
         if let Some(i) = toggle {
-            self.tab.history.push(&self.tab.doc);
+            self.tab.history.push(&self.tab.doc, "Propiedades de capa");
             self.tab.doc.layers[i].visible = !self.tab.doc.layers[i].visible;
             self.tab.dirty = Dirty::All;
         }
@@ -371,7 +373,7 @@ impl PyroApp {
         let mut opacity = self.tab.doc.layers[active].opacity * 100.0;
         let r = ui.add(egui::Slider::new(&mut opacity, 0.0..=100.0).suffix(" %").text("Opacidad de capa"));
         if r.drag_started() || (r.changed() && !r.dragged()) {
-            self.tab.history.push(&self.tab.doc);
+            self.tab.history.push(&self.tab.doc, "Propiedades de capa");
         }
         if r.changed() {
             self.tab.doc.layers[active].opacity = opacity / 100.0;

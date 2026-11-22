@@ -86,7 +86,7 @@ fn medir_sellar_historial_tras_trazo() {
     for _ in 0..5 {
         let mut d = doc.clone();
         let mut h = History::default();
-        h.push(&d);
+        h.push(&d, "Cambio");
         stroke(&mut d, 600.0, 600.0, 100);
         let t = Instant::now();
         h.seal(&d);
@@ -167,7 +167,7 @@ fn medir_operaciones_en_el_hilo_de_la_ui() {
     for _ in 0..5 {
         let mut d = doc.clone();
         let mut h = History::default();
-        h.push(&d);
+        h.push(&d, "Cambio");
         stroke(&mut d, 600.0, 600.0, 100);
         h.seal(&d);
         let t = Instant::now();
@@ -189,7 +189,7 @@ fn medir_memoria_del_historial() {
     let mut d = big_document();
     let mut h = History::default();
     for i in 0..100 {
-        h.push(&d);
+        h.push(&d, "Cambio");
         stroke(&mut d, 100.0 + (i % 10) as f32 * 350.0, 100.0 + (i / 10) as f32 * 350.0, 20);
     }
     h.seal(&d);

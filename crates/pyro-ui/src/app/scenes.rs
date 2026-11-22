@@ -109,7 +109,7 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
     {
         let app = harness.state_mut();
         app.reset_document(sample_document());
-        app.tab.history.push(&app.tab.doc.clone());
+        app.tab.history.push(&app.tab.doc.clone(), "Cambio");
         app.tab.history.mark_saved();
         app.theme = theme;
         app.ui_scale = scale;
@@ -126,7 +126,7 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
         }
         Scene::Filter => app.run(Action::Filter(Filter::BRIGHTNESS_CONTRAST), &ctx),
         Scene::Confirm => {
-            app.tab.history.push(&app.tab.doc.clone());
+            app.tab.history.push(&app.tab.doc.clone(), "Cambio");
             app.request(Pending::Quit, &ctx);
         }
         Scene::Updates => app.update = Some(UpdateState::UpToDate),
@@ -160,10 +160,10 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
         }
         Scene::Recover => app.recover_dialog = Some(super::recover::sample_entries()),
         Scene::QuitMany => {
-            app.tab.history.push(&app.tab.doc.clone());
+            app.tab.history.push(&app.tab.doc.clone(), "Cambio");
             let mut logo = super::tab::Tab::new(sample_document(), 0);
             logo.source_path = Some("logo.ora".into());
-            logo.history.push(&logo.doc.clone());
+            logo.history.push(&logo.doc.clone(), "Cambio");
             app.add_tab(logo);
             app.quit_window = true;
             app.confirm_focus = true;
@@ -173,7 +173,7 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
             app.tab.untitled = 0;
             let mut logo = super::tab::Tab::new(sample_document(), 0);
             logo.source_path = Some("logo.ora".into());
-            logo.history.push(&logo.doc.clone());
+            logo.history.push(&logo.doc.clone(), "Cambio");
             app.add_tab(logo);
             app.untitled_next = 3;
             let n = app.next_untitled();

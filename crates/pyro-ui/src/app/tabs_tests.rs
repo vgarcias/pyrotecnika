@@ -176,7 +176,7 @@ fn presupuesto_comun() {
         h.state_mut().add_tab(Tab::new(Document::new(4096, 4096, None), 0));
         for v in 1..=7_u8 {
             let app = h.state_mut();
-            app.tab.history.push(&app.tab.doc);
+            app.tab.history.push(&app.tab.doc, "Cambio");
             for p in app.tab.doc.layers[0].image_mut().pixels_mut() {
                 *p = Rgba([v, v, v, 255]);
             }
@@ -513,4 +513,21 @@ fn recuperado_de_un_archivo_abierto() {
     h.run_steps(1);
     wait_recovered(&mut h);
     assert_eq!(h.state().tab_title(h.state().active), "cenote.png (recuperado)");
+}
+
+// ---------- Panel de historial (tarea 9) ----------
+
+#[test]
+fn clic_en_el_historial_deshace() {
+    let mut h = app();
+    paint(&mut h, 200.0, 150.0);
+    paint(&mut h, 250.0, 160.0);
+    h.run_steps(2);
+    let steps = h.state().tab.history.steps();
+    let first = steps.labels.iter().position(|l| *l == "Pincel").expect("paso «Pincel»");
+    assert_eq!(steps.labels[first + 1], "Pincel");
+    h.get_by_label(&format!("Paso {first}: Pincel")).click();
+    h.run_steps(2);
+    assert_eq!(h.state().tab.history.steps().current, first);
+    assert!(h.state().tab.history.can_redo());
 }

@@ -55,6 +55,16 @@ impl Tool {
         matches!(self, Tool::Marquee | Tool::Ellipse | Tool::Lasso | Tool::Wand)
     }
 
+    /// Nombre del paso de historial de un trazo con esta herramienta.
+    pub(super) fn history_label(self) -> &'static str {
+        match self {
+            Tool::Eraser => "Borrador",
+            Tool::Clone => "Tampón",
+            Tool::Blur => "Desenfocar",
+            _ => "Pincel",
+        }
+    }
+
     pub(super) fn stroke_kind(self) -> StrokeKind {
         match self {
             Tool::Eraser => StrokeKind::Erase,
@@ -104,7 +114,7 @@ impl PyroApp {
         } else {
             self.select_mode
         };
-        self.tab.history.push(&self.tab.doc);
+        self.tab.history.push(&self.tab.doc, "Selección");
         let result = match (mode, self.tab.doc.selection.take()) {
             (SelectMode::Replace, _) | (SelectMode::Add, None) => Some(mask),
             (_, None) => None,
@@ -136,7 +146,7 @@ impl PyroApp {
         }
         self.tab.drag = match self.tool {
             Tool::Move => {
-                self.tab.history.push(&self.tab.doc);
+                self.tab.history.push(&self.tab.doc, "Mover");
                 Drag::Move {
                     base: self.tab.doc.active_layer().pixels.clone(),
                     base_sel: self.tab.doc.selection.clone(),
@@ -158,7 +168,7 @@ impl PyroApp {
                 } else {
                     (0.0, 0.0)
                 };
-                self.tab.history.push(&self.tab.doc);
+                self.tab.history.push(&self.tab.doc, t.history_label());
                 self.tab.clone_stroke_offset = (t == Tool::Clone).then_some(offset);
                 let mut stroke = Stroke::new(t.stroke_kind(), self.tab.doc.active_layer().pixels.clone(), offset);
                 let active = self.tab.doc.active;
@@ -288,7 +298,7 @@ impl PyroApp {
                     return;
                 }
                 if let Some((x, y)) = self.inside(p) {
-                    self.tab.history.push(&self.tab.doc);
+                    self.tab.history.push(&self.tab.doc, "Bote de pintura");
                     let active = self.tab.doc.active;
                     paint::flood_fill(
                         self.tab.doc.layers[active].image_mut(),
