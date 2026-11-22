@@ -427,3 +427,90 @@ fn autoguarda_cada_dos_minutos() {
     assert!(session.join(format!("{edited}.ora")).exists());
     assert!(!session.join(format!("{untouched}.ora")).exists(), "sin cambios no se autoguarda");
 }
+
+// ---------- Recuperar al arrancar (tarea 7) ----------
+
+use pyro_services::recovery::Recovery;
+
+/// Deja en `base` una sesión muerta con un autoguardado de 40×30 de
+/// «cenote.png» (de `dir`).
+fn crashed_session(base: &Path, dir: &Path) {
+    let old = Recovery::start(base).unwrap();
+    let doc = Document::new(40, 30, Some([1, 2, 3, 255]));
+    old.autosave(99, "cenote.png", Some(&dir.join("cenote.png")), None, &doc, &NoMonitor).unwrap();
+    old.write_heartbeat(std::time::SystemTime::now() - Duration::from_secs(600)).unwrap();
+}
+
+fn app_with_data(base: &Path) -> Harness<'static, PyroApp> {
+    let base = base.to_path_buf();
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(move |cc| PyroApp::with_dirs(cc, None, Some(base.clone())));
+    h.run_steps(2);
+    h
+}
+
+fn wait_recovered(h: &mut Harness<'static, PyroApp>) {
+    let start = Instant::now();
+    while !h.state().recovering.is_empty() && start.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(2));
+        h.run_steps(1);
+    }
+    h.run_steps(1);
+}
+
+#[test]
+fn ofrece_recuperar_tras_un_fallo() {
+    let base = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    crashed_session(base.path(), files.path());
+    let mut h = app_with_data(base.path());
+    assert_eq!(h.state().recover_dialog.as_ref().map(Vec::len), Some(1));
+    h.get_by_label("Recuperar").click();
+    h.run_steps(1);
+    wait_recovered(&mut h);
+    let app = h.state();
+    assert!(app.recover_dialog.is_none());
+    assert_eq!(app.tab_title(app.active), "cenote.png");
+    assert_eq!((app.tab.doc.width, app.tab.doc.height), (40, 30));
+    assert!(app.tab.history.is_modified());
+}
+
+#[test]
+fn decidir_despues_conserva() {
+    let base = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    crashed_session(base.path(), files.path());
+    let mut h = app_with_data(base.path());
+    h.get_by_label("Decidir después").click();
+    h.run_steps(2);
+    assert!(h.state().recover_dialog.is_none());
+    let again = app_with_data(base.path());
+    assert_eq!(again.state().recover_dialog.as_ref().map(Vec::len), Some(1));
+}
+
+#[test]
+fn descartar_borra() {
+    let base = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    crashed_session(base.path(), files.path());
+    let mut h = app_with_data(base.path());
+    h.get_by_label("Descartar").click();
+    h.run_steps(2);
+    assert!(h.state().recover_dialog.is_none());
+    let again = app_with_data(base.path());
+    assert!(again.state().recover_dialog.is_none());
+}
+
+#[test]
+fn recuperado_de_un_archivo_abierto() {
+    let base = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    crashed_session(base.path(), files.path());
+    let mut h = app_with_data(base.path());
+    open(&mut h, &png(files.path(), "cenote.png", 40, 30));
+    h.get_by_label("Recuperar").click();
+    h.run_steps(1);
+    wait_recovered(&mut h);
+    assert_eq!(h.state().tab_title(h.state().active), "cenote.png (recuperado)");
+}

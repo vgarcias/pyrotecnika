@@ -121,6 +121,9 @@ impl PyroApp {
 
     pub(super) fn tab_title(&self, i: usize) -> String {
         let tab = self.tab_at(i);
+        if let Some(label) = &tab.label {
+            return label.clone();
+        }
         match (tab.ora_path.as_ref().or(tab.source_path.as_ref()), tab.untitled) {
             (Some(path), _) => guard::short_name(path),
             (None, n) => format!("Sin título {}", n.max(1)),

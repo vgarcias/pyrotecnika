@@ -18,6 +18,7 @@ mod medir_tests;
 mod palette;
 mod panels;
 mod prefs;
+mod recover;
 mod save;
 #[cfg(test)]
 mod scenes;
@@ -123,6 +124,10 @@ pub struct PyroApp {
     recovery: Option<pyro_services::recovery::Recovery>,
     last_heartbeat: std::time::Instant,
     last_autosave: std::time::Instant,
+    /// Autoguardados de una sesión que no cerró bien, pendientes de decidir.
+    recover_dialog: Option<Vec<pyro_services::recovery::RecoveryEntry>>,
+    /// Autoguardados que se están leyendo para recuperarlos.
+    recovering: Vec<(pyro_services::recovery::RecoveryEntry, pyro_services::jobs::Job<Document>)>,
     /// Adelanto del reloj del autoguardado en las pruebas.
     #[cfg(test)]
     pub(super) clock_offset: std::time::Duration,
@@ -200,7 +205,9 @@ impl PyroApp {
             drop_focus: false,
             quit_after_saves: false,
             quit_window: false,
-            recovery: data_dir.and_then(|d| pyro_services::recovery::Recovery::start(&d).ok()),
+            recovery: data_dir.as_deref().and_then(|d| pyro_services::recovery::Recovery::start(d).ok()),
+            recover_dialog: None,
+            recovering: Vec::new(),
             last_heartbeat: std::time::Instant::now(),
             last_autosave: std::time::Instant::now(),
             #[cfg(test)]
@@ -237,6 +244,14 @@ impl PyroApp {
         };
         if !warns.is_empty() {
             app.warn(warns.join(" "));
+        }
+        // Lo autoguardado por sesiones que no cerraron bien.
+        if let (Some(base), Some(own)) = (&data_dir, &app.recovery) {
+            let found =
+                pyro_services::recovery::Recovery::orphans(base, std::time::SystemTime::now(), Some(own.session_dir()));
+            if !found.is_empty() {
+                app.recover_dialog = Some(found);
+            }
         }
         app
     }
@@ -576,6 +591,7 @@ impl eframe::App for PyroApp {
         self.prefs_window(ctx);
         self.confirm_window(ctx);
         self.quit_window(ctx);
+        self.recover_window(ctx);
         self.sync_title(ctx);
         if std::mem::take(&mut self.drop_focus) {
             ctx.memory_mut(|m| {
@@ -590,6 +606,7 @@ impl eframe::App for PyroApp {
         self.poll_task();
         self.poll_saves(ctx);
         self.tick_autosave(ctx);
+        self.poll_recovery();
         self.enforce_history_budget();
         if self.tab.dirty != Dirty::None || self.tab.sel_dirty {
             ctx.request_repaint();

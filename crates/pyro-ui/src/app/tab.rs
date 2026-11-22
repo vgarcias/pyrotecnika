@@ -24,6 +24,8 @@ pub(super) struct Tab {
     pub(super) uid: u64,
     /// Número de «Sin título N», o 0 si el documento viene de un archivo.
     pub(super) untitled: u32,
+    /// Nombre a mostrar en vez del del archivo («x.png (recuperado)»).
+    pub(super) label: Option<String>,
     pub(super) doc: Document,
     pub(super) history: History,
     pub(super) clone_source: Option<(f32, f32)>,
@@ -66,6 +68,7 @@ impl Tab {
         Tab {
             uid: NEXT.fetch_add(1, Ordering::Relaxed),
             untitled,
+            label: None,
             doc,
             history: History::default(),
             clone_source: None,

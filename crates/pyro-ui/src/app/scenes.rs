@@ -39,6 +39,8 @@ pub(super) enum Scene {
     Tabs,
     /// Salir con dos pestañas con cambios (solo se captura en oscuro).
     QuitMany,
+    /// Recuperar trabajo con dos documentos (solo se captura en oscuro).
+    Recover,
 }
 
 impl Scene {
@@ -69,6 +71,7 @@ impl Scene {
             Scene::Task => "tarea-en-curso",
             Scene::Tabs => "pestanas",
             Scene::QuitMany => "salir-varias",
+            Scene::Recover => "recuperar",
         }
     }
 }
@@ -155,6 +158,7 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
             });
             app.start_task(super::tasks::TaskKind::Open("cenote-final.png".into()), job);
         }
+        Scene::Recover => app.recover_dialog = Some(super::recover::sample_entries()),
         Scene::QuitMany => {
             app.tab.history.push(&app.tab.doc.clone());
             let mut logo = super::tab::Tab::new(sample_document(), 0);
@@ -202,7 +206,7 @@ mod tests {
     #[test]
     fn todas_las_escenas_se_dibujan() {
         for theme in [ThemeChoice::Dark, ThemeChoice::Light, ThemeChoice::HighContrast] {
-            for s in Scene::ALL.into_iter().chain([Scene::PrefsAppearance, Scene::QuitMany]) {
+            for s in Scene::ALL.into_iter().chain([Scene::PrefsAppearance, Scene::QuitMany, Scene::Recover]) {
                 let mut h = scene(s, theme, 1.0, egui::vec2(1280.0, 800.0));
                 h.run_steps(4);
             }
@@ -229,6 +233,7 @@ mod tests {
         cases.push((Scene::Main, ThemeChoice::Dark, "oscuro", 1.5));
         cases.push((Scene::PrefsAppearance, ThemeChoice::Dark, "oscuro", 1.0));
         cases.push((Scene::QuitMany, ThemeChoice::Dark, "oscuro", 1.0));
+        cases.push((Scene::Recover, ThemeChoice::Dark, "oscuro", 1.0));
         for (s, theme, tag, scale) in cases {
             let mut h = scene(s, theme, scale, egui::vec2(1280.0, 800.0));
             let suffix = if scale == 1.0 { String::new() } else { format!("-{:.0}", scale * 100.0) };

@@ -323,6 +323,12 @@ impl History {
         self.saved = Some(position);
     }
 
+    /// Da el documento por no guardado sin añadir pasos (un documento
+    /// recuperado tras un fallo).
+    pub fn mark_unsaved(&mut self) {
+        self.saved = None;
+    }
+
     /// Marca el estado actual como guardado.
     pub fn mark_saved(&mut self) {
         self.saved = Some(self.position);
