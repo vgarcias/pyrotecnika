@@ -28,6 +28,8 @@ rfd = "0.15"
 eframe = { version = "0.31", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
 crc32fast = "1"
 rayon = "1"
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

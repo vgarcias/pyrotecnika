@@ -29,3 +29,10 @@ path = "fuzz_targets/inspect_png.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "open_ora"
+path = "fuzz_targets/open_ora.rs"
+test = false
+doc = false
+bench = false
