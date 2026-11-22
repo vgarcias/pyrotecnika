@@ -116,6 +116,8 @@ pub struct PyroApp {
     drop_focus: bool,
     /// Salir en cuanto acaben los guardados en curso.
     quit_after_saves: bool,
+    /// Ventana de salir con varias pestañas con cambios.
+    quit_window: bool,
     /// Ruta que devuelve el diálogo de Guardar en las pruebas.
     #[cfg(test)]
     pub(super) save_dialog_override: Option<Option<PathBuf>>,
@@ -183,6 +185,7 @@ impl PyroApp {
             untitled_next: 2,
             drop_focus: false,
             quit_after_saves: false,
+            quit_window: false,
             #[cfg(test)]
             save_dialog_override: None,
             #[cfg(test)]
@@ -546,6 +549,7 @@ impl eframe::App for PyroApp {
         self.palette_window(ctx);
         self.prefs_window(ctx);
         self.confirm_window(ctx);
+        self.quit_window(ctx);
         self.sync_title(ctx);
         if std::mem::take(&mut self.drop_focus) {
             ctx.memory_mut(|m| {

@@ -322,3 +322,78 @@ fn fallo_al_guardar_avisa_y_no_cierra() {
     assert!(matches!(h.state().status.tone, super::guard::Tone::Error));
     assert_eq!(h.state().tab_count(), count);
 }
+
+// ---------- Salir con varias pestañas con cambios (tarea 5) ----------
+
+/// Dos pestañas con cambios: «a.png» (con `a.ora` como destino) y una
+/// «Sin título» nueva.
+fn two_unsaved(dir: &Path) -> Harness<'static, PyroApp> {
+    let mut h = app();
+    open(&mut h, &png(dir, "a.png", 40, 30));
+    paint(&mut h, 10.0, 10.0);
+    h.state_mut().tab.ora_path = Some(dir.join("a.ora"));
+    let ctx = h.ctx.clone();
+    h.state_mut().perform(Pending::New { width: 40, height: 30, transparent: false }, &ctx);
+    paint(&mut h, 10.0, 10.0);
+    h
+}
+
+#[test]
+fn cerrar_con_varias_pregunta_una_vez() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = two_unsaved(dir.path());
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::Quit, &ctx);
+    h.run_steps(2);
+    assert!(h.state().quit_window);
+    assert!(h.state().confirm.is_none());
+    assert!(h.query_by_label_contains("• a.ora").is_some());
+    assert!(h.query_by_label_contains("• Sin título 2").is_some());
+}
+
+#[test]
+fn guardar_todo_y_salir() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = two_unsaved(dir.path());
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::Quit, &ctx);
+    h.run_steps(2);
+    save_to(&mut h, Some(dir.path().join("nuevo.ora")));
+    h.get_by_label("Guardar todo").click();
+    h.run_steps(1);
+    wait_saves(&mut h);
+    h.run_steps(2);
+    assert!(dir.path().join("a.ora").exists());
+    assert!(dir.path().join("nuevo.ora").exists());
+    assert!(h.state().closing);
+}
+
+#[test]
+fn cancelar_guardar_como_cancela_el_cierre() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = two_unsaved(dir.path());
+    let count = h.state().tab_count();
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::Quit, &ctx);
+    h.run_steps(2);
+    save_to(&mut h, None);
+    h.get_by_label("Guardar todo").click();
+    h.run_steps(1);
+    wait_saves(&mut h);
+    h.run_steps(2);
+    assert!(!h.state().closing);
+    assert_eq!(h.state().tab_count(), count);
+}
+
+#[test]
+fn descartar_todo() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = two_unsaved(dir.path());
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::Quit, &ctx);
+    h.run_steps(2);
+    h.get_by_label("Descartar todo").click();
+    h.run_steps(2);
+    assert!(h.state().closing);
+    assert!(!dir.path().join("a.ora").exists());
+}

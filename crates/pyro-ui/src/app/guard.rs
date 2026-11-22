@@ -152,7 +152,12 @@ impl PyroApp {
             Pending::CloseTab => self.tab.history.is_modified(),
             Pending::Quit | Pending::InstallUpdate | Pending::Restart => self.any_modified(),
         };
-        if at_risk {
+        let modified_tabs = (0..self.tab_count()).filter(|&i| self.tab_at(i).history.is_modified()).count();
+        if matches!(pending, Pending::Quit) && modified_tabs > 1 {
+            // Varias pestañas con cambios: una sola ventana para todas.
+            self.quit_window = true;
+            self.confirm_focus = true;
+        } else if at_risk {
             self.confirm = Some(pending);
             self.confirm_focus = true;
         } else {
@@ -200,8 +205,7 @@ impl PyroApp {
             self.info("Guardando…");
         } else if requested && !self.closing && self.any_modified() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm = Some(Pending::Quit);
-            self.confirm_focus = true;
+            self.request(Pending::Quit, ctx);
         }
     }
 
@@ -286,5 +290,81 @@ impl PyroApp {
                 self.save(false, pending, ctx);
             }
         }
+    }
+
+    /// Salir con varias pestañas con cambios: lista y Guardar todo /
+    /// Descartar todo / Cancelar (foco en Cancelar).
+    pub(super) fn quit_window(&mut self, ctx: &egui::Context) {
+        if !self.quit_window {
+            return;
+        }
+        let titles: Vec<String> = (0..self.tab_count())
+            .filter(|&i| self.tab_at(i).history.is_modified())
+            .map(|i| self.tab_title(i))
+            .collect();
+        let focus = std::mem::take(&mut self.confirm_focus);
+        let mut choice = None;
+        let modal = egui::Modal::new(egui::Id::new("salir-varias")).show(ctx, |ui| {
+            ui.set_max_width(440.0);
+            ui.heading("¿Salir con cambios sin guardar?");
+            ui.add_space(8.0);
+            ui.label(format!("{} documentos tienen cambios sin guardar:", titles.len()));
+            for t in &titles {
+                ui.label(format!("• {t}"));
+            }
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, "Guardar todo").clicked() {
+                    choice = Some(Choice::Save);
+                }
+                if widgets::button(ui, "Descartar todo").clicked() {
+                    choice = Some(Choice::Discard);
+                }
+                // Cancelar recibe el foco: Intro o Espacio nunca descartan.
+                let cancel = widgets::button(ui, "Cancelar");
+                if focus {
+                    cancel.request_focus();
+                }
+                if cancel.clicked() {
+                    choice = Some(Choice::Cancel);
+                }
+            });
+        });
+        if choice.is_none() && modal.should_close() {
+            choice = Some(Choice::Cancel);
+        }
+        match choice {
+            None => {}
+            Some(Choice::Cancel) => self.quit_window = false,
+            Some(Choice::Discard) => {
+                self.quit_window = false;
+                self.perform(Pending::Quit, ctx);
+            }
+            Some(Choice::Save) => {
+                self.quit_window = false;
+                self.save_all_and_quit(ctx);
+            }
+        }
+    }
+
+    /// Guarda todas las pestañas con cambios (las que no tienen archivo piden
+    /// ruta una a una) y sale al terminar. Si se cancela un diálogo o un
+    /// guardado no arranca, no se sale (lo ya lanzado se guarda igual).
+    fn save_all_and_quit(&mut self, ctx: &egui::Context) {
+        let original = self.active;
+        let pending: Vec<usize> = (0..self.tab_count()).filter(|&i| self.tab_at(i).history.is_modified()).collect();
+        for i in pending {
+            self.switch_to(i);
+            if self.tab.save.is_none() {
+                self.save(false, None, ctx);
+            }
+            if self.tab.save.is_none() {
+                self.quit_after_saves = false;
+                self.switch_to(original.min(self.tab_count() - 1));
+                return;
+            }
+        }
+        self.switch_to(original.min(self.tab_count() - 1));
+        self.quit_after_saves = true;
     }
 }
