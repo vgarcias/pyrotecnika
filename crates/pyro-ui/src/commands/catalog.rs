@@ -19,6 +19,7 @@ pub(crate) enum Category {
     View,
     Tools,
     Brush,
+    Window,
     Help,
 }
 
@@ -33,6 +34,7 @@ impl Category {
             View => "Ver",
             Tools => "Herramientas",
             Brush => "Pincel",
+            Window => "Ventana",
             Help => "Ayuda",
         }
     }
@@ -117,6 +119,9 @@ pub(crate) static CATALOG: &[CommandDef] = &[
     def("tool.eyedropper", "Cuentagotas", Tools, Action::SelectTool(Tool::Eyedropper), &["I"]),
     def("brush.smaller", "Reducir tamaño del pincel", Brush, Action::BrushSmaller, &["OpenBracket"]),
     def("brush.bigger", "Aumentar tamaño del pincel", Brush, Action::BrushBigger, &["CloseBracket"]),
+    def("window.next", "Pestaña siguiente", Window, Action::NextTab, &["Ctrl+Tab"]),
+    def("window.prev", "Pestaña anterior", Window, Action::PrevTab, &["Ctrl+Shift+Tab"]),
+    def("window.close", "Cerrar pestaña", Window, Action::CloseTab, &["Ctrl+W"]),
     def("help.updates", "Buscar actualizaciones…", Help, Action::CheckUpdates, &[]),
 ];
 
@@ -194,6 +199,9 @@ mod tests {
             ("tool.eyedropper", &["I"]),
             ("brush.smaller", &["OpenBracket"]),
             ("brush.bigger", &["CloseBracket"]),
+            ("window.next", &["Ctrl+Tab"]),
+            ("window.prev", &["Ctrl+Shift+Tab"]),
+            ("window.close", &["Ctrl+W"]),
         ];
         for (id, chords) in want {
             assert_eq!(find(id).unwrap_or_else(|| panic!("falta {id}")).defaults, *chords, "{id}");

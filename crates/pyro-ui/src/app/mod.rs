@@ -21,6 +21,9 @@ mod prefs;
 mod scenes;
 mod shortcuts;
 mod tab;
+mod tabs;
+#[cfg(test)]
+mod tabs_tests;
 mod tasks;
 #[cfg(test)]
 mod tasks_tests;
@@ -88,11 +91,26 @@ pub(crate) enum Action {
     OpenRecent(usize),
     ClearRecent,
     RevealInFolder,
+    NextTab,
+    PrevTab,
+    /// Cierra la pestaña activa (pregunta si tiene cambios).
+    CloseTab,
+    /// Cierra la pestaña `i` (la activa primero).
+    CloseTabAt(usize),
+    SwitchTab(usize),
 }
 
 pub struct PyroApp {
     /// Documento de la pestaña activa (las demás, en la tarea 2).
     tab: tab::Tab,
+    /// Las demás pestañas, en orden visible sin la activa.
+    others: Vec<tab::Tab>,
+    /// Posición de la activa en el orden visible.
+    active: usize,
+    /// Número del próximo «Sin título N».
+    untitled_next: u32,
+    /// Soltar el foco al final del cuadro (tras Ctrl+Tab).
+    drop_focus: bool,
     tool: Tool,
     brush: BrushParams,
     tolerance: u8,
@@ -149,6 +167,10 @@ impl PyroApp {
         cc.egui_ctx.set_zoom_factor(settings.appearance.ui_scale);
         let mut app = Self {
             tab: tab::Tab::new(Document::new(800, 600, Some([255, 255, 255, 255])), 1),
+            others: Vec::new(),
+            active: 0,
+            untitled_next: 2,
+            drop_focus: false,
             tool: Tool::Brush,
             brush: BrushParams::default(),
             tolerance: 32,
@@ -220,6 +242,7 @@ impl PyroApp {
             Action::LayerUp => active + 1 < layers,
             Action::LayerDown | Action::LayerMergeDown => active > 0,
             Action::ClearRecent => !self.settings.recent.files.is_empty(),
+            Action::NextTab | Action::PrevTab => self.tab_count() > 1,
             Action::OpenRecent(i) => i < self.settings.recent.files.len(),
             Action::RevealInFolder => self.tab.source_path.is_some(),
             _ => true,
@@ -230,7 +253,11 @@ impl PyroApp {
 
     /// Abre `path` en segundo plano (ver [`PyroApp::start_open`]).
     pub(super) fn open_path(&mut self, path: PathBuf, ctx: &egui::Context) {
-        self.start_open(path, ctx);
+        // Si ya está abierto, se activa su pestaña en vez de duplicarlo.
+        match self.find_tab(&path) {
+            Some(i) => self.switch_to(i),
+            None => self.start_open(path, ctx),
+        }
     }
 
     /// Termina de abrir: el documento ya está decodificado.
@@ -246,13 +273,17 @@ impl PyroApp {
             None => format!("Abierto: {} ({}×{} px)", path.display(), doc.width, doc.height),
         };
         self.info(message);
-        self.reset_document(doc);
-        self.tab.png_info = opened.png_info;
-        self.settings.recent.push(path.clone());
+        // Siempre en una pestaña nueva (la «Sin título» intacta se sustituye).
+        let mut tab = tab::Tab::new(doc, 0);
+        tab.png_info = opened.png_info;
+        tab.source_path = Some(path.clone());
+        self.add_tab(tab);
+        self.settings.recent.push(path);
         self.save_settings();
-        self.tab.source_path = Some(path);
     }
 
+    /// Sustituye el documento de la pestaña activa (escenas y pruebas).
+    #[cfg(test)]
     pub(super) fn reset_document(&mut self, doc: Document) {
         self.tab.doc = doc;
         self.tab.generation += 1;
@@ -317,6 +348,14 @@ impl PyroApp {
             Action::Open => self.pick_and_open(ctx),
             Action::Export => self.tab.export_dialog = Some(ExportDialog::new(self.tab.doc.composite())),
             Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::NextTab => self.switch_to((self.active + 1) % self.tab_count()),
+            Action::PrevTab => self.switch_to((self.active + self.tab_count() - 1) % self.tab_count()),
+            Action::SwitchTab(i) => self.switch_to(i),
+            Action::CloseTab => self.request(Pending::CloseTab, ctx),
+            Action::CloseTabAt(i) => {
+                self.switch_to(i);
+                self.request(Pending::CloseTab, ctx);
+            }
             Action::Undo => {
                 if self.tab.history.undo(&mut self.tab.doc) {
                     self.after_history();
@@ -472,6 +511,7 @@ impl eframe::App for PyroApp {
         self.guard_close(ctx);
         self.handle_input(ctx);
         self.menu_bar(ctx);
+        self.tab_bar(ctx);
         self.status_bar(ctx);
         self.tool_panel(ctx);
         self.side_panel(ctx);
@@ -484,10 +524,18 @@ impl eframe::App for PyroApp {
         self.prefs_window(ctx);
         self.confirm_window(ctx);
         self.sync_title(ctx);
+        if std::mem::take(&mut self.drop_focus) {
+            ctx.memory_mut(|m| {
+                if let Some(id) = m.focused() {
+                    m.surrender_focus(id);
+                }
+            });
+        }
         crate::design::widgets::paint_focus_ring(ctx);
         // Después de la entrada y la interfaz: un «Cancelar» o Esc de este
         // mismo cuadro gana al resultado que acaba de llegar.
         self.poll_task();
+        self.enforce_history_budget();
         if self.tab.dirty != Dirty::None || self.tab.sel_dirty {
             ctx.request_repaint();
         }

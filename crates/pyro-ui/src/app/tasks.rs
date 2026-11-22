@@ -14,6 +14,7 @@ use pyro_core::task::Cancelled;
 use pyro_formats::io::{self, Opened, TooLarge};
 use pyro_services::jobs::{Job, JobError, JobPoll, Wake};
 
+use super::guard::Tone;
 use super::{guard, Action, PyroApp};
 use crate::design::widgets;
 
@@ -67,6 +68,11 @@ impl Action {
                 | Action::OpenPalette
                 | Action::OpenPreferences
                 | Action::Quit
+                | Action::NextTab
+                | Action::PrevTab
+                | Action::SwitchTab(_)
+                | Action::CloseTab
+                | Action::CloseTabAt(_)
         )
     }
 }
@@ -132,37 +138,50 @@ impl PyroApp {
     /// Recoge el resultado de la tarea, si terminó. Se descarta si entretanto
     /// se abrió o creó otro documento.
     pub(super) fn poll_task(&mut self) {
-        let Some(task) = &mut self.tab.task else { return };
-        let result = task.job.poll();
-        if matches!(result, JobPoll::Running) {
-            return;
-        }
-        let Some(task) = self.tab.task.take() else { return };
-        if task.generation != self.tab.generation {
-            return;
-        }
-        let filtering = matches!(task.kind, TaskKind::Filter(_));
-        match (result, task.kind) {
-            (JobPoll::Done(TaskOutput::Opened(opened)), TaskKind::Open(path)) => self.finish_open(path, opened),
-            (JobPoll::Done(TaskOutput::Filtered(img)), TaskKind::Filter(filter)) => {
-                self.tab.doc.active_layer_mut().pixels = Arc::new(img);
-                self.tab.history.seal(&self.tab.doc);
-                self.mark_dirty();
-                self.info(format!("{} aplicado.", filter.name()));
+        // Las tareas de todas las pestañas: cada resultado va a la suya.
+        let mut opened = Vec::new();
+        let mut messages = Vec::new();
+        for i in 0..self.tab_count() {
+            let tab = self.tab_at_mut(i);
+            let Some(task) = &mut tab.task else { continue };
+            let result = task.job.poll();
+            if matches!(result, JobPoll::Running) {
+                continue;
             }
-            (JobPoll::Done(_), _) | (JobPoll::Running, _) => {}
-            (JobPoll::Failed(message), _) => {
-                if filtering {
-                    self.tab.history.discard_last();
+            let Some(task) = tab.task.take() else { continue };
+            if task.generation != tab.generation {
+                continue;
+            }
+            let filtering = matches!(task.kind, TaskKind::Filter(_));
+            match (result, task.kind) {
+                (JobPoll::Done(TaskOutput::Opened(o)), TaskKind::Open(path)) => opened.push((path, o)),
+                (JobPoll::Done(TaskOutput::Filtered(img)), TaskKind::Filter(filter)) => {
+                    tab.doc.active_layer_mut().pixels = Arc::new(img);
+                    tab.history.seal(&tab.doc);
+                    tab.dirty = super::canvas_tiles::Dirty::All;
+                    tab.sel_dirty = true;
+                    messages.push((Tone::Info, format!("{} aplicado.", filter.name())));
                 }
-                self.fail(message);
-            }
-            (JobPoll::Cancelled, _) => {
-                if filtering {
-                    self.tab.history.discard_last();
+                (JobPoll::Done(_), _) | (JobPoll::Running, _) => {}
+                (JobPoll::Failed(message), _) => {
+                    if filtering {
+                        tab.history.discard_last();
+                    }
+                    messages.push((Tone::Error, message));
                 }
-                self.info("Cancelado.");
+                (JobPoll::Cancelled, _) => {
+                    if filtering {
+                        tab.history.discard_last();
+                    }
+                    messages.push((Tone::Info, "Cancelado.".to_string()));
+                }
             }
+        }
+        for (tone, text) in messages {
+            self.status = super::guard::Status { tone, text };
+        }
+        for (path, o) in opened {
+            self.finish_open(path, o);
         }
     }
 

@@ -19,10 +19,9 @@ use super::tools::Drag;
 
 pub(super) struct Tab {
     /// Identidad única en la sesión (autoguardado, tareas).
-    #[allow(dead_code)] // se usa desde la tarea 2 (pestañas)
+    #[allow(dead_code)] // se usa desde la tarea 6 (autoguardado)
     pub(super) uid: u64,
     /// Número de «Sin título N», o 0 si el documento viene de un archivo.
-    #[allow(dead_code)] // se usa desde la tarea 2 (pestañas)
     pub(super) untitled: u32,
     pub(super) doc: Document,
     pub(super) history: History,

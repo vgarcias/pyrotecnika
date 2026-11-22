@@ -112,6 +112,11 @@ fn normalized(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).map_or_else(|_| p.to_path_buf(), |c| strip_verbatim(&c))
 }
 
+/// `a` y `b` son el mismo archivo (rutas normalizadas como en recientes).
+pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
+    normalized(a) == normalized(b)
+}
+
 fn strip_verbatim(p: &Path) -> PathBuf {
     let text = p.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {

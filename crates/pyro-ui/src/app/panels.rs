@@ -87,6 +87,7 @@ impl PyroApp {
                         ui.weak(format!("Actual: {:.0} %", self.ui_scale * 100.0));
                     });
                 });
+                ui.menu_button("Ventana", |ui| self.window_menu(ui, &mut action));
                 ui.menu_button("Ayuda", |ui| {
                     self.menu_items(ui, &mut action, &["help.updates"]);
                     ui.separator();
@@ -113,7 +114,7 @@ impl PyroApp {
         }
     }
 
-    fn menu_items(&self, ui: &mut egui::Ui, action: &mut Option<Action>, ids: &[&str]) {
+    pub(super) fn menu_items(&self, ui: &mut egui::Ui, action: &mut Option<Action>, ids: &[&str]) {
         for id in ids {
             self.menu_item(ui, action, id, None);
         }

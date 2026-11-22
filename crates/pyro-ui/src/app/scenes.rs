@@ -35,10 +35,12 @@ pub(super) enum Scene {
     PrefsAppearance,
     /// Abriendo un archivo al 40 %: progreso y «Cancelar» en la barra de estado.
     Task,
+    /// Tres pestañas: «cenote.png», «logo.ora» con cambios (activa) y «Sin título 3».
+    Tabs,
 }
 
 impl Scene {
-    pub(super) const ALL: [Scene; 9] = [
+    pub(super) const ALL: [Scene; 10] = [
         Scene::Main,
         Scene::Export,
         Scene::Filter,
@@ -48,6 +50,7 @@ impl Scene {
         Scene::Palette,
         Scene::Prefs,
         Scene::Task,
+        Scene::Tabs,
     ];
 
     pub(super) fn name(self) -> &'static str {
@@ -62,6 +65,7 @@ impl Scene {
             Scene::Prefs => "preferencias-atajos",
             Scene::PrefsAppearance => "preferencias-apariencia",
             Scene::Task => "tarea-en-curso",
+            Scene::Tabs => "pestanas",
         }
     }
 }
@@ -147,6 +151,17 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
                 }
             });
             app.start_task(super::tasks::TaskKind::Open("cenote-final.png".into()), job);
+        }
+        Scene::Tabs => {
+            app.tab.source_path = Some("cenote.png".into());
+            app.tab.untitled = 0;
+            let mut logo = super::tab::Tab::new(sample_document(), 0);
+            logo.source_path = Some("logo.ora".into());
+            logo.history.push(&logo.doc.clone());
+            app.add_tab(logo);
+            app.untitled_next = 3;
+            let n = app.next_untitled();
+            app.others.push(super::tab::Tab::new(Document::new(800, 600, Some([255, 255, 255, 255])), n));
         }
     }
     harness.run_steps(4);

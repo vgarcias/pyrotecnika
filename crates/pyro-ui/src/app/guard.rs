@@ -33,6 +33,8 @@ pub(super) enum Pending {
         transparent: bool,
     },
     Quit,
+    /// Cerrar la pestaña activa.
+    CloseTab,
     /// Instalar la actualización encontrada (en Windows cierra la app).
     InstallUpdate,
     /// Abrir la versión recién instalada y cerrar esta.
@@ -144,7 +146,13 @@ impl PyroApp {
 
     /// Ejecuta la acción o, si hay cambios sin exportar, pide confirmación.
     pub(super) fn request(&mut self, pending: Pending, ctx: &egui::Context) {
-        if self.tab.history.is_modified() {
+        let at_risk = match pending {
+            // Abrir y Nuevo crean una pestaña: no se pierde nada.
+            Pending::Open(_) | Pending::New { .. } => false,
+            Pending::CloseTab => self.tab.history.is_modified(),
+            Pending::Quit | Pending::InstallUpdate | Pending::Restart => self.any_modified(),
+        };
+        if at_risk {
             self.confirm = Some(pending);
             self.confirm_focus = true;
         } else {
@@ -157,9 +165,11 @@ impl PyroApp {
             Pending::Open(path) => self.open_path(path, ctx),
             Pending::New { width, height, transparent } => {
                 let bg = (!transparent).then_some([255, 255, 255, 255]);
-                self.reset_document(Document::new(width, height, bg));
+                let n = self.next_untitled();
+                self.add_tab(super::tab::Tab::new(Document::new(width, height, bg), n));
                 self.info("Documento nuevo.");
             }
+            Pending::CloseTab => self.close_active_tab(),
             Pending::Quit => {
                 self.closing = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -172,7 +182,7 @@ impl PyroApp {
     /// Intercepta el cierre de la ventana (botón, Alt+F4, Archivo › Salir).
     pub(super) fn guard_close(&mut self, ctx: &egui::Context) {
         let requested = ctx.input(|i| i.viewport().close_requested());
-        if requested && !self.closing && self.tab.history.is_modified() {
+        if requested && !self.closing && self.any_modified() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Pending::Quit);
             self.confirm_focus = true;
@@ -181,7 +191,7 @@ impl PyroApp {
 
     /// Título de la ventana: archivo abierto y marca de cambios sin exportar.
     pub(super) fn sync_title(&mut self, ctx: &egui::Context) {
-        let name = self.tab.source_path.as_deref().map_or_else(|| "Sin título".to_string(), short_name);
+        let name = self.tab_title(self.active);
         let mark = if self.tab.history.is_modified() { "• " } else { "" };
         let title = format!("{mark}{name} - Pyrotecnika");
         if title != self.title {
@@ -196,6 +206,7 @@ impl PyroApp {
             Pending::Open(path) => format!("Después de guardar se abrirá «{}».", short_name(path)),
             Pending::New { .. } => "Después de guardar se creará el documento nuevo.".into(),
             Pending::Quit => "Después de guardar se cerrará Pyrotecnika.".into(),
+            Pending::CloseTab => "Después de guardar se cerrará la pestaña.".into(),
             Pending::InstallUpdate => "Después de guardar se instalará la actualización.".into(),
             Pending::Restart => "Después de guardar se reiniciará Pyrotecnika.".into(),
         })
@@ -217,6 +228,10 @@ impl PyroApp {
             Pending::Quit => {
                 ("¿Salir y descartar los cambios?".to_string(), "Si sales ahora, esos cambios se pierden.")
             }
+            Pending::CloseTab => (
+                format!("¿Cerrar «{}» y descartar los cambios?", self.tab_title(self.active)),
+                "Si la cierras, esos cambios se pierden y no se pueden deshacer.",
+            ),
             Pending::InstallUpdate => (
                 "¿Actualizar y descartar los cambios?".to_string(),
                 "Para actualizar, Pyrotecnika se cierra y esos cambios se pierden.",

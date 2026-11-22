@@ -58,4 +58,7 @@ Este archivo se genera desde el catálogo de comandos (`crates/pyro-ui/src/comma
 | Herramientas | Cuentagotas | I |
 | Pincel | Reducir tamaño del pincel | [ |
 | Pincel | Aumentar tamaño del pincel | ] |
+| Ventana | Pestaña siguiente | Ctrl+Tab |
+| Ventana | Pestaña anterior | Ctrl+Mayús+Tab |
+| Ventana | Cerrar pestaña | Ctrl+W |
 | Ayuda | Buscar actualizaciones… | — |

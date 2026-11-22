@@ -55,10 +55,18 @@ struct Delta {
     active: usize,
     selection: SelDelta,
     layers: Vec<LayerDelta>,
+    /// Memoria que ocupa (calculada una vez al crearlo).
+    size: usize,
 }
 
 impl Delta {
-    fn bytes(&self) -> usize {
+    /// Calcula y guarda su tamaño.
+    fn sized(mut self) -> Delta {
+        self.size = self.measure();
+        self
+    }
+
+    fn measure(&self) -> usize {
         let layers: usize = self
             .layers
             .iter()
@@ -139,7 +147,7 @@ fn delta(before: &Document, after: &Document) -> Delta {
         .collect();
     let selection =
         if before.selection == after.selection { SelDelta::Same } else { SelDelta::Set(before.selection.clone()) };
-    Delta { width: before.width, height: before.height, active: before.active, selection, layers }
+    Delta { width: before.width, height: before.height, active: before.active, selection, layers, size: 0 }.sized()
 }
 
 /// Convierte `doc` en el estado que describe `d` y devuelve el delta que lo
@@ -184,7 +192,9 @@ fn apply(d: Delta, doc: &mut Document) -> Delta {
         SelDelta::Same => SelDelta::Same,
         SelDelta::Set(s) => SelDelta::Set(std::mem::replace(&mut doc.selection, s)),
     };
-    let inverse = Delta { width: doc.width, height: doc.height, active: doc.active, selection, layers: inverse_layers };
+    let inverse =
+        Delta { width: doc.width, height: doc.height, active: doc.active, selection, layers: inverse_layers, size: 0 }
+            .sized();
     doc.layers = layers;
     doc.width = d.width;
     doc.height = d.height;
@@ -274,7 +284,18 @@ impl History {
 
     /// Memoria que ocupan los pasos guardados.
     pub fn bytes(&self) -> usize {
-        self.undo.iter().chain(&self.redo).map(Delta::bytes).sum()
+        self.undo.iter().chain(&self.redo).map(|d| d.size).sum()
+    }
+
+    /// Descarta el paso más viejo (para el presupuesto común de varias
+    /// pestañas). Siempre deja al menos uno; `false` si no pudo.
+    pub fn drop_oldest(&mut self) -> bool {
+        if self.undo.len() > 1 {
+            self.undo.remove(0);
+            true
+        } else {
+            false
+        }
     }
 
     /// Descarta los pasos más viejos por encima del tope o del presupuesto
@@ -284,7 +305,7 @@ impl History {
         let mut excess = (self.undo.len() + pending).saturating_sub(MAX_STEPS);
         let mut total = self.bytes();
         while self.undo.len() > 1 && (excess > 0 || total > MEMORY_BUDGET) {
-            total -= self.undo[0].bytes();
+            total -= self.undo[0].size;
             self.undo.remove(0);
             excess = excess.saturating_sub(1);
         }
