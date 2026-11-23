@@ -233,6 +233,24 @@ fn guardar_como_propone_ora_junto_al_origen() {
 }
 
 #[test]
+fn nombre_base_conserva_los_puntos_y_quita_fw() {
+    use super::save::document_stem;
+    assert_eq!(document_stem(Path::new("mi.foto.v2.png")), "mi.foto.v2");
+    assert_eq!(document_stem(Path::new("banner.fw.png")), "banner");
+    assert_eq!(document_stem(Path::new("banner.FW.PNG")), "banner");
+    assert_eq!(document_stem(Path::new("cenote")), "cenote");
+    assert_eq!(document_stem(Path::new(".fw.png")), ".fw");
+}
+
+#[test]
+fn guardar_como_quita_fw_del_nombre() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "banner.fw.png", 40, 30));
+    assert_eq!(super::save::suggested_save_path(&h.state().tab), dir.path().join("banner.ora"));
+}
+
+#[test]
 fn nunca_sobrescribe_el_png() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = app();

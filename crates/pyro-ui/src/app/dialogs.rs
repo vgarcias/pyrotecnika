@@ -146,8 +146,8 @@ impl PyroApp {
             .tab
             .source_path
             .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().split('.').next().unwrap_or("imagen").to_string())
+            .map(|p| super::save::document_stem(p))
+            .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "imagen".into());
         let bytes = bytes.clone();
         let Some(path) = self.pick_export_path(format.label(), ext, format!("{stem}.{ext}")) else {

@@ -23,6 +23,17 @@ pub(super) struct SaveTask {
     pub(super) then: Option<Pending>,
 }
 
+/// Nombre del archivo sin su extensión ni el `.fw` de Fireworks:
+/// `mi.foto.v2.png` → `mi.foto.v2`, `banner.fw.png` → `banner`.
+pub(super) fn document_stem(path: &Path) -> String {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let cut = stem.len().saturating_sub(3);
+    match stem.get(cut..) {
+        Some(tail) if cut > 0 && tail.eq_ignore_ascii_case(".fw") => stem[..cut].to_string(),
+        _ => stem,
+    }
+}
+
 /// Ruta que propone Guardar como: la `.ora` de la pestaña, o el nombre del
 /// origen con extensión `.ora` en su misma carpeta.
 pub(super) fn suggested_save_path(tab: &Tab) -> PathBuf {
@@ -30,7 +41,7 @@ pub(super) fn suggested_save_path(tab: &Tab) -> PathBuf {
         return ora.clone();
     }
     match &tab.source_path {
-        Some(source) => source.with_extension("ora"),
+        Some(source) => source.with_file_name(format!("{}.ora", document_stem(source))),
         None => PathBuf::from(format!("Sin título {}.ora", tab.untitled.max(1))),
     }
 }
