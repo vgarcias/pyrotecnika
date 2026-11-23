@@ -149,7 +149,7 @@ fn cerrar_con_cambios_pregunta() {
     let count = h.state().tab_count();
     h.press_key_modifiers(Modifiers::COMMAND, Key::W);
     h.run_steps(2);
-    assert!(matches!(h.state().confirm, Some(Pending::CloseTab)));
+    assert!(matches!(h.state().confirm, Some(Pending::CloseTab(_))));
     h.get_by_label("Cancelar").click();
     h.run_steps(2);
     assert_eq!(h.state().tab_count(), count);
@@ -345,7 +345,7 @@ fn cerrar_con_varias_pregunta_una_vez() {
     let ctx = h.ctx.clone();
     h.state_mut().request(Pending::Quit, &ctx);
     h.run_steps(2);
-    assert!(h.state().quit_window);
+    assert!(h.state().quit_window.is_some());
     assert!(h.state().confirm.is_none());
     assert!(h.query_by_label_contains("• a.ora").is_some());
     assert!(h.query_by_label_contains("• Sin título 2").is_some());
@@ -530,4 +530,171 @@ fn clic_en_el_historial_deshace() {
     h.run_steps(2);
     assert_eq!(h.state().tab.history.steps().current, first);
     assert!(h.state().tab.history.can_redo());
+}
+
+// ---------- Arreglos de la revisión final ----------
+
+/// Tarea de filtro que no acaba hasta que se cancela (con su paso de historial).
+fn blocking_filter(h: &mut Harness<'static, PyroApp>) {
+    let ctx = h.ctx.clone();
+    let app = h.state_mut();
+    app.tab.history.push(&app.tab.doc.clone(), "Invertir colores");
+    let job: pyro_services::jobs::Job<super::tasks::TaskOutput> =
+        pyro_services::jobs::Job::spawn(super::tasks::wake(&ctx), |c| loop {
+            c.check()?;
+            std::thread::sleep(Duration::from_millis(1));
+        });
+    app.start_task(super::tasks::TaskKind::Filter(Filter::Invert), job);
+}
+
+#[test]
+fn recuperar_dos_sin_titulo_y_abrir_un_archivo() {
+    let base = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    let old = Recovery::start(base.path()).unwrap();
+    for uid in [1, 2] {
+        old.autosave(uid, "Sin título", None, None, &Document::new(10, 10, None), &NoMonitor).unwrap();
+    }
+    old.write_heartbeat(std::time::SystemTime::now() - Duration::from_secs(600)).unwrap();
+    let mut h = app_with_data(base.path());
+    h.get_by_label("Recuperar").click();
+    h.run_steps(1);
+    wait_recovered(&mut h);
+    open(&mut h, &png(files.path(), "a.png", 4, 4));
+    let app = h.state();
+    let recovered = (0..app.tab_count()).filter(|&i| app.tab_at(i).history.is_modified()).count();
+    assert_eq!(recovered, 2, "ninguna recuperada se sustituye");
+    assert_eq!(app.tab_count(), 3);
+}
+
+#[test]
+fn guardar_durante_un_filtro_no_marca_guardado() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    paint(&mut h, 200.0, 150.0);
+    blocking_filter(&mut h);
+    save_to(&mut h, Some(dir.path().join("x.ora")));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(2);
+    h.get_by_label("Guardar").click();
+    h.run_steps(2);
+    assert!(h.state().tab.save.is_none(), "no se guarda a mitad de un filtro");
+    assert!(h.state().tab.history.is_modified());
+    h.state_mut().cancel_task();
+}
+
+#[test]
+fn no_autoguarda_a_mitad_de_un_filtro() {
+    let data = tempfile::tempdir().unwrap();
+    let mut h = app_with_data(data.path());
+    let ctx = h.ctx.clone();
+    h.state_mut().perform(Pending::New { width: 40, height: 30, transparent: false }, &ctx);
+    paint(&mut h, 10.0, 10.0);
+    blocking_filter(&mut h);
+    let uid = h.state().tab.uid;
+    let session = h.state().recovery.as_ref().unwrap().session_dir().to_path_buf();
+    h.state_mut().clock_offset += Duration::from_secs(121);
+    h.run_steps(3);
+    assert!(h.state().tab.autosave.is_none());
+    assert!(!session.join(format!("{uid}.ora")).exists());
+    h.state_mut().cancel_task();
+}
+
+#[test]
+fn dos_guardados_que_cierran_y_guardan_a_la_vez() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "a.png", 8, 8));
+    paint(&mut h, 2.0, 2.0);
+    save_to(&mut h, Some(dir.path().join("a.ora")));
+    h.press_key_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(2);
+    h.get_by_label("Guardar").click();
+    open(&mut h, &png(dir.path(), "b.png", 8, 8));
+    paint(&mut h, 2.0, 2.0);
+    save_to(&mut h, Some(dir.path().join("b.ora")));
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::Save, &ctx);
+    // Los dos terminan antes del siguiente cuadro.
+    std::thread::sleep(Duration::from_millis(300));
+    h.run_steps(1);
+    wait_saves(&mut h);
+    let app = h.state();
+    let titles: Vec<String> = (0..app.tab_count()).map(|i| app.tab_title(i)).collect();
+    assert!(!titles.contains(&"a.ora".to_string()), "{titles:?}");
+    let b = (0..app.tab_count()).find(|&i| app.tab_title(i) == "b.ora").expect("b.ora");
+    assert!(!app.tab_at(b).history.is_modified());
+}
+
+#[test]
+fn salir_con_solo_una_inactiva_con_cambios_la_nombra() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "a.png", 8, 8));
+    paint(&mut h, 2.0, 2.0);
+    let a = h.state().active;
+    open(&mut h, &png(dir.path(), "b.png", 8, 8));
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::Quit, &ctx);
+    assert!(h.state().confirm.is_some());
+    assert_eq!(h.state().active, a, "la confirmación muestra la pestaña con cambios");
+}
+
+#[test]
+fn actualizar_con_varias_con_cambios_usa_la_ventana_comun() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = two_unsaved(dir.path());
+    let ctx = h.ctx.clone();
+    h.state_mut().request(Pending::InstallUpdate, &ctx);
+    assert!(h.state().quit_window.is_some());
+    assert!(h.state().confirm.is_none());
+}
+
+#[test]
+fn guardar_como_en_el_archivo_de_otra_pestana_se_rechaza() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    let target = dir.path().join("x.ora");
+    paint(&mut h, 200.0, 150.0);
+    save_to(&mut h, Some(target.clone()));
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::Save, &ctx);
+    wait_saves(&mut h);
+    let before = std::fs::read(&target).unwrap();
+    h.state_mut().perform(Pending::New { width: 8, height: 8, transparent: false }, &ctx);
+    paint(&mut h, 2.0, 2.0);
+    save_to(&mut h, Some(target.clone()));
+    h.state_mut().run(Action::SaveAs, &ctx);
+    wait_saves(&mut h);
+    assert!(matches!(h.state().status.tone, super::guard::Tone::Error));
+    assert_eq!(std::fs::read(&target).unwrap(), before);
+}
+
+#[test]
+fn el_historial_no_salta_con_el_dialogo_de_filtro() {
+    let mut h = app();
+    paint(&mut h, 200.0, 150.0);
+    let ctx = h.ctx.clone();
+    h.state_mut().run(Action::Filter(Filter::GAUSSIAN_BLUR), &ctx);
+    h.run_steps(2);
+    let id = h.state().tab.history.state_id();
+    h.get_by_label("Paso 0: Nuevo documento").click();
+    h.run_steps(2);
+    assert_eq!(h.state().tab.history.state_id(), id);
+    assert!(h.state().tab.filter_dialog.is_some());
+}
+
+#[test]
+fn cambiar_de_pestana_no_vuelve_a_subir_el_lienzo() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app();
+    open(&mut h, &png(dir.path(), "a.png", 300, 300));
+    h.run_steps(2);
+    let back = h.state().active - 1;
+    h.state_mut().switch_to(back);
+    h.run_steps(2);
+    let here = h.state().active + 1;
+    h.state_mut().switch_to(here);
+    h.run_steps(1);
+    assert_eq!(h.state().tab.canvas.last_uploads, 0);
 }

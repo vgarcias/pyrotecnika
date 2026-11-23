@@ -59,6 +59,8 @@ struct Delta {
     size: usize,
     /// Nombre del paso («Pincel», «Nueva capa»…).
     label: &'static str,
+    /// Identidad del estado que reconstruye.
+    id: u64,
 }
 
 impl Delta {
@@ -132,7 +134,7 @@ fn diff_tiles(before: &RgbaImage, after: &RgbaImage) -> Vec<Tile> {
 }
 
 /// Describe `before` respecto de `after`.
-fn delta(before: &Document, after: &Document, label: &'static str) -> Delta {
+fn delta(before: &Document, after: &Document, label: &'static str, id: u64) -> Delta {
     let layers = before
         .layers
         .iter()
@@ -149,7 +151,7 @@ fn delta(before: &Document, after: &Document, label: &'static str) -> Delta {
         .collect();
     let selection =
         if before.selection == after.selection { SelDelta::Same } else { SelDelta::Set(before.selection.clone()) };
-    Delta { width: before.width, height: before.height, active: before.active, selection, layers, size: 0, label }
+    Delta { width: before.width, height: before.height, active: before.active, selection, layers, size: 0, label, id }
         .sized()
 }
 
@@ -203,6 +205,7 @@ fn apply(d: Delta, doc: &mut Document) -> Delta {
         layers: inverse_layers,
         size: 0,
         label: d.label,
+        id: 0,
     }
     .sized();
     doc.layers = layers;
@@ -216,16 +219,19 @@ pub struct History {
     undo: Vec<Delta>,
     redo: Vec<Delta>,
     /// Estado anterior al último cambio, aún sin comparar con el siguiente
-    /// (comparte los píxeles con el documento: no cuesta memoria), y su nombre.
-    pending: Option<(Document, &'static str)>,
+    /// (comparte los píxeles con el documento: no cuesta memoria), el nombre
+    /// del paso y la identidad de ese estado.
+    pending: Option<(Document, &'static str, u64)>,
     /// Nombre del estado inicial («Nuevo documento», «Abierto», «Recuperado»).
     origin: &'static str,
     /// Se descartaron pasos viejos por el tope o el presupuesto.
     trimmed: bool,
-    /// Posición en la línea de cambios: sube al modificar o rehacer y baja
-    /// al deshacer. No depende de cuántos pasos siguen en memoria.
-    position: u64,
-    /// Posición del último guardado, o `None` si ya no se puede volver a él.
+    /// Identidad del estado actual. Cada cambio crea una nueva que no se
+    /// repite nunca (deshacer y rehacer vuelven a las ya vistas): un guardado
+    /// o autoguardado identifica exactamente el estado que escribió.
+    current: u64,
+    next_id: u64,
+    /// Identidad del estado guardado, o `None` si no hay ninguno.
     saved: Option<u64>,
 }
 
@@ -249,27 +255,33 @@ pub struct HistorySteps {
 impl History {
     /// Historial vacío cuyo estado inicial se llama `origin`.
     pub fn new(origin: &'static str) -> History {
-        Self { undo: Vec::new(), redo: Vec::new(), pending: None, origin, trimmed: false, position: 0, saved: Some(0) }
+        Self {
+            undo: Vec::new(),
+            redo: Vec::new(),
+            pending: None,
+            origin,
+            trimmed: false,
+            current: 0,
+            next_id: 1,
+            saved: Some(0),
+        }
     }
 
     /// Guarda el estado actual antes de modificarlo; `label` nombra el paso.
     pub fn push(&mut self, doc: &Document, label: &'static str) {
         self.seal(doc);
-        self.pending = Some((doc.clone(), label));
+        self.pending = Some((doc.clone(), label, self.current));
         self.redo.clear();
-        // El guardado quedaba en la rama de rehacer, que se acaba de perder.
-        if self.saved.is_some_and(|s| s > self.position) {
-            self.saved = None;
-        }
-        self.position += 1;
+        self.current = self.next_id;
+        self.next_id += 1;
         self.trim();
     }
 
     /// Compara el paso pendiente con `current` y se queda solo con lo que
     /// cambió. Se llama solo; la interfaz lo adelanta al soltar el pincel.
     pub fn seal(&mut self, current: &Document) {
-        if let Some((before, label)) = self.pending.take() {
-            self.undo.push(delta(&before, current, label));
+        if let Some((before, label, id)) = self.pending.take() {
+            self.undo.push(delta(&before, current, label, id));
             self.trim();
         }
     }
@@ -278,9 +290,11 @@ impl History {
         self.seal(doc);
         match self.undo.pop() {
             Some(d) => {
-                let inverse = apply(d, doc);
+                let target = d.id;
+                let mut inverse = apply(d, doc);
+                inverse.id = self.current;
+                self.current = target;
                 self.redo.push(inverse);
-                self.position -= 1;
                 true
             }
             None => false,
@@ -291,19 +305,24 @@ impl History {
         self.seal(doc);
         match self.redo.pop() {
             Some(d) => {
-                let inverse = apply(d, doc);
+                let target = d.id;
+                let mut inverse = apply(d, doc);
+                inverse.id = self.current;
+                self.current = target;
                 self.undo.push(inverse);
-                self.position += 1;
                 true
             }
             None => false,
         }
     }
 
-    /// Descarta el último estado guardado (p. ej. al cancelar un filtro).
+    /// Descarta el último paso cuando el documento ya volvió al estado
+    /// anterior (p. ej. al cancelar un filtro).
     pub fn discard_last(&mut self) {
-        if self.pending.take().is_some() || self.undo.pop().is_some() {
-            self.position -= 1;
+        if let Some((_, _, id)) = self.pending.take() {
+            self.current = id;
+        } else if let Some(d) = self.undo.pop() {
+            self.current = d.id;
         }
     }
 
@@ -316,7 +335,7 @@ impl History {
     pub fn steps(&self) -> HistorySteps {
         let mut labels = vec![self.origin];
         labels.extend(self.undo.iter().map(|d| d.label));
-        labels.extend(self.pending.as_ref().map(|(_, l)| *l));
+        labels.extend(self.pending.as_ref().map(|(_, l, _)| *l));
         let current = labels.len() - 1;
         labels.extend(self.redo.iter().rev().map(|d| d.label));
         HistorySteps { labels, current, trimmed: self.trimmed }
@@ -365,16 +384,17 @@ impl History {
         }
     }
 
-    /// Posición actual en la línea de cambios (para guardar una instantánea
-    /// y marcarla luego con [`History::mark_saved_at`]).
-    pub fn position(&self) -> u64 {
-        self.position
+    /// Identidad del estado actual (para guardar una instantánea y marcarla
+    /// luego con [`History::mark_saved_at`]).
+    pub fn state_id(&self) -> u64 {
+        self.current
     }
 
-    /// Marca como guardada la posición `position` (la de la instantánea que
-    /// se escribió); si se editó entretanto, el documento sigue modificado.
-    pub fn mark_saved_at(&mut self, position: u64) {
-        self.saved = Some(position);
+    /// Marca como guardado el estado `id` (el de la instantánea escrita); si
+    /// se editó entretanto, o se deshizo y se editó otra cosa, el documento
+    /// sigue modificado.
+    pub fn mark_saved_at(&mut self, id: u64) {
+        self.saved = Some(id);
     }
 
     /// Da el documento por no guardado sin añadir pasos (un documento
@@ -385,12 +405,12 @@ impl History {
 
     /// Marca el estado actual como guardado.
     pub fn mark_saved(&mut self) {
-        self.saved = Some(self.position);
+        self.saved = Some(self.current);
     }
 
     /// Indica si hay cambios desde el último guardado.
     pub fn is_modified(&self) -> bool {
-        self.saved != Some(self.position)
+        self.saved != Some(self.current)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -655,5 +675,22 @@ mod tests {
         let steps = h.steps();
         assert!(steps.trimmed);
         assert_eq!(steps.labels.len(), 201);
+    }
+    #[test]
+    fn guardar_tras_deshacer_y_editar_sigue_modificado() {
+        let mut doc = Document::new(8, 8, None);
+        let mut h = History::default();
+        h.push(&doc, "Pincel");
+        doc.layers[0].image_mut().put_pixel(0, 0, Rgba([1, 1, 1, 255]));
+        let saved = h.state_id();
+        assert!(h.undo(&mut doc));
+        h.push(&doc, "Pincel");
+        doc.layers[0].image_mut().put_pixel(1, 1, Rgba([2, 2, 2, 255]));
+        h.mark_saved_at(saved);
+        assert!(h.is_modified(), "la instantánea guardada era otra rama");
+        assert!(h.undo(&mut doc));
+        assert!(h.redo(&mut doc));
+        h.mark_saved_at(h.state_id());
+        assert!(!h.is_modified());
     }
 }

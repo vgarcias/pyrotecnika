@@ -33,8 +33,8 @@ pub(super) enum Pending {
         transparent: bool,
     },
     Quit,
-    /// Cerrar la pestaña activa.
-    CloseTab,
+    /// Cerrar la pestaña con ese `uid`.
+    CloseTab(u64),
     /// Instalar la actualización encontrada (en Windows cierra la app).
     InstallUpdate,
     /// Abrir la versión recién instalada y cerrar esta.
@@ -146,18 +146,30 @@ impl PyroApp {
 
     /// Ejecuta la acción o, si hay cambios sin exportar, pide confirmación.
     pub(super) fn request(&mut self, pending: Pending, ctx: &egui::Context) {
+        let modified: Vec<usize> = (0..self.tab_count()).filter(|&i| self.tab_at(i).history.is_modified()).collect();
+        let closes_app = matches!(pending, Pending::Quit | Pending::InstallUpdate | Pending::Restart);
         let at_risk = match pending {
             // Abrir y Nuevo crean una pestaña: no se pierde nada.
             Pending::Open(_) | Pending::New { .. } => false,
-            Pending::CloseTab => self.tab.history.is_modified(),
-            Pending::Quit | Pending::InstallUpdate | Pending::Restart => self.any_modified(),
+            Pending::CloseTab(uid) => match self.tab_index(uid) {
+                Some(i) => {
+                    // La confirmación habla de la pestaña que se cierra.
+                    self.switch_to(i);
+                    self.tab.history.is_modified()
+                }
+                None => return,
+            },
+            Pending::Quit | Pending::InstallUpdate | Pending::Restart => !modified.is_empty(),
         };
-        let modified_tabs = (0..self.tab_count()).filter(|&i| self.tab_at(i).history.is_modified()).count();
-        if matches!(pending, Pending::Quit) && modified_tabs > 1 {
+        if closes_app && modified.len() > 1 {
             // Varias pestañas con cambios: una sola ventana para todas.
-            self.quit_window = true;
+            self.quit_window = Some(pending);
             self.confirm_focus = true;
         } else if at_risk {
+            if closes_app {
+                // Una sola con cambios: se muestra esa, aunque no sea la activa.
+                self.switch_to(modified[0]);
+            }
             self.confirm = Some(pending);
             self.confirm_focus = true;
         } else {
@@ -174,16 +186,20 @@ impl PyroApp {
                 self.add_tab(super::tab::Tab::new(Document::new(width, height, bg), n));
                 self.info("Documento nuevo.");
             }
-            Pending::CloseTab => match &mut self.tab.save {
-                // Cerrar espera a que termine el guardado de la pestaña.
-                Some(save) => {
-                    save.then = Some(Pending::CloseTab);
-                    self.info("Guardando…");
+            Pending::CloseTab(uid) => {
+                let Some(i) = self.tab_index(uid) else { return };
+                self.switch_to(i);
+                match &mut self.tab.save {
+                    // Cerrar espera a que termine el guardado de la pestaña.
+                    Some(save) => {
+                        save.then = Some(Pending::CloseTab(uid));
+                        self.info("Guardando…");
+                    }
+                    None => self.close_active_tab(),
                 }
-                None => self.close_active_tab(),
-            },
+            }
             Pending::Quit if self.any_saving() => {
-                self.quit_after_saves = true;
+                self.after_saves = Some(Pending::Quit);
                 self.info("Guardando…");
             }
             Pending::Quit => {
@@ -201,7 +217,7 @@ impl PyroApp {
         if requested && !self.closing && self.any_saving() {
             // Salir espera a los guardados en curso.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.quit_after_saves = true;
+            self.after_saves = Some(Pending::Quit);
             self.info("Guardando…");
         } else if requested && !self.closing && self.any_modified() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -236,7 +252,7 @@ impl PyroApp {
             Pending::Quit => {
                 ("¿Salir y descartar los cambios?".to_string(), "Si sales ahora, esos cambios se pierden.")
             }
-            Pending::CloseTab => (
+            Pending::CloseTab(_) => (
                 format!("¿Cerrar «{}» y descartar los cambios?", self.tab_title(self.active)),
                 "Si la cierras, esos cambios se pierden y no se pueden deshacer.",
             ),
@@ -295,9 +311,14 @@ impl PyroApp {
     /// Salir con varias pestañas con cambios: lista y Guardar todo /
     /// Descartar todo / Cancelar (foco en Cancelar).
     pub(super) fn quit_window(&mut self, ctx: &egui::Context) {
-        if !self.quit_window {
+        let Some(pending) = &self.quit_window else {
             return;
-        }
+        };
+        let heading = match pending {
+            Pending::InstallUpdate => "¿Actualizar con cambios sin guardar?",
+            Pending::Restart => "¿Reiniciar con cambios sin guardar?",
+            _ => "¿Salir con cambios sin guardar?",
+        };
         let titles: Vec<String> = (0..self.tab_count())
             .filter(|&i| self.tab_at(i).history.is_modified())
             .map(|i| self.tab_title(i))
@@ -306,7 +327,7 @@ impl PyroApp {
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::new("salir-varias")).show(ctx, |ui| {
             ui.set_max_width(440.0);
-            ui.heading("¿Salir con cambios sin guardar?");
+            ui.heading(heading);
             ui.add_space(8.0);
             ui.label(format!("{} documentos tienen cambios sin guardar:", titles.len()));
             for t in &titles {
@@ -335,14 +356,16 @@ impl PyroApp {
         }
         match choice {
             None => {}
-            Some(Choice::Cancel) => self.quit_window = false,
+            Some(Choice::Cancel) => self.quit_window = None,
             Some(Choice::Discard) => {
-                self.quit_window = false;
-                self.perform(Pending::Quit, ctx);
+                if let Some(pending) = self.quit_window.take() {
+                    self.perform(pending, ctx);
+                }
             }
             Some(Choice::Save) => {
-                self.quit_window = false;
-                self.save_all_and_quit(ctx);
+                if let Some(pending) = self.quit_window.take() {
+                    self.save_all_and_then(pending, ctx);
+                }
             }
         }
     }
@@ -350,7 +373,7 @@ impl PyroApp {
     /// Guarda todas las pestañas con cambios (las que no tienen archivo piden
     /// ruta una a una) y sale al terminar. Si se cancela un diálogo o un
     /// guardado no arranca, no se sale (lo ya lanzado se guarda igual).
-    fn save_all_and_quit(&mut self, ctx: &egui::Context) {
+    fn save_all_and_then(&mut self, then: Pending, ctx: &egui::Context) {
         let original = self.active;
         let pending: Vec<usize> = (0..self.tab_count()).filter(|&i| self.tab_at(i).history.is_modified()).collect();
         for i in pending {
@@ -359,12 +382,12 @@ impl PyroApp {
                 self.save(false, None, ctx);
             }
             if self.tab.save.is_none() {
-                self.quit_after_saves = false;
+                self.after_saves = None;
                 self.switch_to(original.min(self.tab_count() - 1));
                 return;
             }
         }
         self.switch_to(original.min(self.tab_count() - 1));
-        self.quit_after_saves = true;
+        self.after_saves = Some(then);
     }
 }

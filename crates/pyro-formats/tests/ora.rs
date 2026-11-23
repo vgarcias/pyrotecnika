@@ -162,3 +162,30 @@ fn escritura_atomica() {
     assert_eq!(back.document.layers.len(), 3);
     assert!(!dir.path().join("x.ora.tmp").exists());
 }
+
+#[test]
+fn presupuesto_total_de_capas() {
+    assert!(pyro_formats::ora::canvas_budget_ok(4096, 4096, 3));
+    assert!(!pyro_formats::ora::canvas_budget_ok(20_000, 20_000, 6));
+    assert!(!pyro_formats::ora::canvas_budget_ok(23_000, 23_000, 1000));
+}
+
+#[test]
+fn escrituras_simultaneas_no_se_pisan() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("x.ora");
+    for _ in 0..10 {
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let p = path.clone();
+                std::thread::spawn(move || write_ora(&sample(), &p, &NoMonitor))
+            })
+            .collect();
+        for h in handles {
+            let _ = h.join().unwrap();
+        }
+        assert!(decode_ora(&std::fs::read(&path).unwrap(), &NoMonitor).is_ok());
+    }
+    let leftovers = std::fs::read_dir(dir.path()).unwrap().count();
+    assert_eq!(leftovers, 1, "no quedan temporales");
+}

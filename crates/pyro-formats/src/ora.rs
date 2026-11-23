@@ -30,6 +30,15 @@ pub const CROPPED: &str = "Parte de alguna capa quedaba fuera del lienzo y se re
 pub const FLATTENED: &str = "Este archivo no tiene la lista de capas (stack.xml); se abrió aplanado.";
 const TOO_LARGE: &str = "El archivo .ora es demasiado grande.";
 
+/// Memoria total máxima de las capas de un `.ora` (cada capa es un lienzo
+/// entero de `w`×`h`).
+const MAX_CANVAS_TOTAL: u64 = 8 << 30;
+
+/// Las `layers` capas de `w`×`h` caben en el presupuesto de memoria.
+pub fn canvas_budget_ok(w: u32, h: u32, layers: usize) -> bool {
+    u64::from(w).saturating_mul(u64::from(h)).saturating_mul(4).saturating_mul(layers.max(1) as u64) <= MAX_CANVAS_TOTAL
+}
+
 pub struct OraOpened {
     pub document: Document,
     pub warnings: Vec<String>,
@@ -109,8 +118,11 @@ pub fn encode_ora(doc: &Document, m: &dyn Monitor) -> Result<Vec<u8>> {
 /// temporal en la misma carpeta y luego se renombra.
 pub fn write_ora(doc: &Document, path: &Path, m: &dyn Monitor) -> Result<()> {
     let bytes = encode_ora(doc, m)?;
+    // Temporal único: dos guardados a la vez en el mismo archivo no se pisan.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
+    tmp.push(format!(".{}-{n}.tmp", std::process::id()));
     let tmp = std::path::PathBuf::from(tmp);
     std::fs::write(&tmp, bytes).with_context(|| format!("No se pudo escribir {}", path.display()))?;
     if let Err(e) = std::fs::rename(&tmp, path) {
@@ -248,6 +260,9 @@ pub fn decode_ora(bytes: &[u8], m: &dyn Monitor) -> Result<OraOpened> {
     let xml = String::from_utf8(xml).map_err(|_| damaged("stack.xml no es texto"))?;
     let (w, h, specs, unsupported) = parse_stack(&xml)?;
     check_size(w, h)?;
+    if !canvas_budget_ok(w, h, specs.len()) {
+        bail!(TOO_LARGE);
+    }
     let mut warnings = Vec::new();
     if unsupported {
         warnings.push(UNSUPPORTED.to_string());

@@ -75,3 +75,23 @@ fn remove_tras_guardar() {
     assert!(!a.session_dir().join("3.ora").exists());
     assert!(!a.session_dir().join("3.toml").exists());
 }
+
+#[test]
+fn autoguardar_recrea_la_carpeta_si_desaparece() {
+    let base = tempfile::tempdir().unwrap();
+    let a = Recovery::start(base.path()).unwrap();
+    std::fs::remove_dir_all(a.session_dir()).unwrap();
+    a.autosave(1, "a", None, None, &doc(4, 4), &NoMonitor).unwrap();
+    assert!(a.session_dir().join("1.ora").exists());
+}
+
+#[test]
+fn el_latido_sigue_sin_la_interfaz() {
+    let base = tempfile::tempdir().unwrap();
+    let a = Recovery::start_with_interval(base.path(), Duration::from_millis(20)).unwrap();
+    a.autosave(1, "a", None, None, &doc(4, 4), &NoMonitor).unwrap();
+    a.write_heartbeat(SystemTime::now() - Duration::from_secs(600)).unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(Recovery::orphans(base.path(), SystemTime::now(), None).is_empty());
+    a.finish();
+}

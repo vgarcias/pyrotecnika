@@ -63,9 +63,8 @@ impl PyroApp {
             }
         });
         if let Some(i) = target {
-            if self.tab.history.go_to(&mut self.tab.doc, i) {
-                self.after_history();
-            }
+            // Por run(): no se salta con una tarea o el diálogo de filtro abiertos.
+            self.run(super::Action::GoToStep(i), ui.ctx());
         }
     }
 }

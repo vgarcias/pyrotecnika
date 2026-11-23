@@ -104,6 +104,8 @@ pub(crate) enum Action {
     /// Cierra la pestaña `i` (la activa primero).
     CloseTabAt(usize),
     SwitchTab(usize),
+    /// Ir a un paso del panel de historial.
+    GoToStep(usize),
 }
 
 pub struct PyroApp {
@@ -117,14 +119,16 @@ pub struct PyroApp {
     untitled_next: u32,
     /// Soltar el foco al final del cuadro (tras Ctrl+Tab).
     drop_focus: bool,
-    /// Salir en cuanto acaben los guardados en curso.
-    quit_after_saves: bool,
-    /// Ventana de salir con varias pestañas con cambios.
-    quit_window: bool,
+    /// Qué hacer (salir, actualizar…) en cuanto acaben los guardados en curso.
+    after_saves: Option<guard::Pending>,
+    /// Ventana común de salir, actualizar o reiniciar con varias pestañas
+    /// con cambios (y qué se iba a hacer).
+    quit_window: Option<guard::Pending>,
     /// Carpeta de autoguardado de esta sesión (`None` sin carpeta de datos).
     recovery: Option<pyro_services::recovery::Recovery>,
-    last_heartbeat: std::time::Instant,
     last_autosave: std::time::Instant,
+    /// Ya se avisó de que el autoguardado falla.
+    autosave_warned: bool,
     /// Autoguardados de una sesión que no cerró bien, pendientes de decidir.
     recover_dialog: Option<Vec<pyro_services::recovery::RecoveryEntry>>,
     /// Autoguardados que se están leyendo para recuperarlos.
@@ -204,13 +208,13 @@ impl PyroApp {
             active: 0,
             untitled_next: 2,
             drop_focus: false,
-            quit_after_saves: false,
-            quit_window: false,
+            after_saves: None,
+            quit_window: None,
             recovery: data_dir.as_deref().and_then(|d| pyro_services::recovery::Recovery::start(d).ok()),
             recover_dialog: None,
             recovering: Vec::new(),
-            last_heartbeat: std::time::Instant::now(),
             last_autosave: std::time::Instant::now(),
+            autosave_warned: false,
             #[cfg(test)]
             clock_offset: std::time::Duration::ZERO,
             #[cfg(test)]
@@ -413,10 +417,17 @@ impl PyroApp {
             Action::NextTab => self.switch_to((self.active + 1) % self.tab_count()),
             Action::PrevTab => self.switch_to((self.active + self.tab_count() - 1) % self.tab_count()),
             Action::SwitchTab(i) => self.switch_to(i),
-            Action::CloseTab => self.request(Pending::CloseTab, ctx),
+            Action::CloseTab => self.request(Pending::CloseTab(self.tab.uid), ctx),
             Action::CloseTabAt(i) => {
-                self.switch_to(i);
-                self.request(Pending::CloseTab, ctx);
+                if i < self.tab_count() {
+                    let uid = self.tab_at(i).uid;
+                    self.request(Pending::CloseTab(uid), ctx);
+                }
+            }
+            Action::GoToStep(i) => {
+                if self.tab.history.go_to(&mut self.tab.doc, i) {
+                    self.after_history();
+                }
             }
             Action::Undo => {
                 if self.tab.history.undo(&mut self.tab.doc) {

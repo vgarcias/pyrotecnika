@@ -58,6 +58,16 @@ impl PyroApp {
         if self.tab.save.is_some() {
             return;
         }
+        // La instantánea tiene que ser un estado completo: ni a mitad de un
+        // filtro (su paso ya está en el historial) ni de un trazo.
+        if self.tab.task.is_some() {
+            self.warn("Espera a que termine la tarea en curso (o cancélala) para guardar.");
+            return;
+        }
+        if !matches!(self.tab.drag, super::tools::Drag::None) {
+            self.warn("Suelta el trazo para guardar.");
+            return;
+        }
         let path = match (&self.tab.ora_path, as_new) {
             (Some(path), false) => path.clone(),
             _ => {
@@ -68,6 +78,17 @@ impl PyroApp {
         };
         let is_ora = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ora"));
         let is_source = self.tab.source_path.as_deref().is_some_and(|s| same_file(s, &path));
+        let uid = self.tab.uid;
+        let other_tab = (0..self.tab_count()).any(|i| {
+            self.tab_at(i).uid != uid && self.tab_at(i).ora_path.as_deref().is_some_and(|p| same_file(p, &path))
+        });
+        if other_tab {
+            self.fail(format!(
+                "«{}» está abierto en otra pestaña: guárdalo con otro nombre.",
+                guard::short_name(&path)
+            ));
+            return;
+        }
         if !is_ora || (is_source && self.tab.ora_path.is_none()) {
             self.fail(format!(
                 "No se guardó en «{}»: Guardar solo escribe archivos .ora y nunca toca el original. Para una \
@@ -87,7 +108,7 @@ impl PyroApp {
                 JobError::Failed(format!("No se pudo guardar «{}»: {reason}.", guard::short_name(&target)))
             })
         });
-        let position = self.tab.history.position();
+        let position = self.tab.history.state_id();
         self.tab.save = Some(SaveTask { job, path, position, then });
         self.info("Guardando…");
     }
@@ -107,12 +128,14 @@ impl PyroApp {
                 continue;
             }
             if let Some(save) = tab.save.take() {
-                finished.push((i, tab.uid, save, result));
+                finished.push((tab.uid, save, result));
             }
         }
-        for (i, uid, save, result) in finished {
+        // Por uid: un resultado anterior puede cerrar pestañas y mover las demás.
+        for (uid, save, result) in finished {
             match result {
                 JobPoll::Done(()) => {
+                    let Some(i) = self.tab_index(uid) else { continue };
                     let tab = self.tab_at_mut(i);
                     tab.history.mark_saved_at(save.position);
                     tab.ora_path = Some(save.path.clone());
@@ -121,22 +144,20 @@ impl PyroApp {
                     self.info(format!("Guardado «{}».", guard::short_name(&save.path)));
                     self.after_save(uid);
                     if let Some(then) = save.then {
-                        if matches!(then, Pending::CloseTab) {
-                            self.switch_to(i);
-                        }
                         self.request(then, ctx);
                     }
                 }
                 JobPoll::Failed(message) => {
-                    self.quit_after_saves = false;
+                    self.after_saves = None;
                     self.status = guard::Status { tone: Tone::Error, text: message };
                 }
                 JobPoll::Cancelled | JobPoll::Running => {}
             }
         }
-        if self.quit_after_saves && !self.any_saving() {
-            self.quit_after_saves = false;
-            self.request(Pending::Quit, ctx);
+        if self.after_saves.is_some() && !self.any_saving() {
+            if let Some(then) = self.after_saves.take() {
+                self.request(then, ctx);
+            }
         }
     }
 

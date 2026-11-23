@@ -165,7 +165,7 @@ pub(super) fn scene(which: Scene, theme: ThemeChoice, scale: f32, size: egui::Ve
             logo.source_path = Some("logo.ora".into());
             logo.history.push(&logo.doc.clone(), "Cambio");
             app.add_tab(logo);
-            app.quit_window = true;
+            app.quit_window = Some(super::guard::Pending::Quit);
             app.confirm_focus = true;
         }
         Scene::Tabs => {

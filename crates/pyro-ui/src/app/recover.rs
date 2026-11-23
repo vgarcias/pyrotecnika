@@ -73,6 +73,8 @@ impl PyroApp {
         if already_open {
             let name = file.as_deref().map(guard::short_name).unwrap_or_default();
             tab.label = Some(format!("{name} (recuperado)"));
+            // Dos pestañas no guardan en el mismo .ora: esta pedirá ruta.
+            tab.ora_path = None;
         }
         // Tiene cambios sin guardar, pero no hay paso que deshacer.
         tab.history = pyro_core::history::History::new("Recuperado");

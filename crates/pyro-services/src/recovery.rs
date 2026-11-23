@@ -66,17 +66,28 @@ fn from_secs(s: u64) -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(s)
 }
 
-/// Carpeta de autoguardado de esta sesión. Barata de clonar (solo rutas),
-/// para pasarla a la tarea que autoguarda.
+/// Cada cuánto se renueva el latido.
+pub const HEARTBEAT_EVERY: Duration = Duration::from_secs(30);
+
+/// Carpeta de autoguardado de esta sesión. Barata de clonar (rutas y la
+/// señal de parada del latido), para pasarla a la tarea que autoguarda.
 #[derive(Clone, Debug)]
 pub struct Recovery {
     dir: PathBuf,
     started: u64,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Recovery {
-    /// Crea la carpeta de la sesión dentro de `base/recovery`.
+    /// Crea la carpeta de la sesión dentro de `base/recovery` y arranca el
+    /// latido en su propio hilo (sigue aunque la ventana no se dibuje:
+    /// minimizada o con un diálogo del SO abierto).
     pub fn start(base: &Path) -> io::Result<Recovery> {
+        Self::start_with_interval(base, HEARTBEAT_EVERY)
+    }
+
+    /// Como [`Recovery::start`], con otro intervalo de latido (pruebas).
+    pub fn start_with_interval(base: &Path, every: Duration) -> io::Result<Recovery> {
         let now = SystemTime::now();
         let ms = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
         // El contador distingue dos sesiones del mismo proceso en el mismo
@@ -85,8 +96,16 @@ impl Recovery {
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = base.join("recovery").join(format!("{ms}-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
-        let r = Recovery { dir, started: secs(now) };
+        let r = Recovery { dir, started: secs(now), stop: Default::default() };
         r.write_heartbeat(now)?;
+        let beat = r.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(every);
+            if beat.stop.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            let _ = beat.heartbeat();
+        });
         Ok(r)
     }
 
@@ -116,6 +135,10 @@ impl Recovery {
         doc: &Document,
         m: &dyn Monitor,
     ) -> Result<()> {
+        // Si la carpeta desapareció (p. ej. otra instancia la tomó por muerta),
+        // se recrea.
+        std::fs::create_dir_all(&self.dir).context("No se pudo crear la carpeta de autoguardado")?;
+        let _ = self.heartbeat();
         write_ora(doc, &self.dir.join(format!("{uid}.ora")), m)?;
         let meta = EntryFile {
             title: title.to_string(),
@@ -135,6 +158,7 @@ impl Recovery {
 
     /// Cierre normal: no queda nada que recuperar.
     pub fn finish(self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 

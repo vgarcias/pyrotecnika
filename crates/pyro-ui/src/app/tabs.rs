@@ -10,7 +10,6 @@ use eframe::egui;
 use pyro_core::document::Document;
 use pyro_core::history::MEMORY_BUDGET;
 
-use super::canvas_tiles::Dirty;
 use super::tab::Tab;
 use super::tools::Drag;
 use super::{guard, Action, PyroApp};
@@ -55,8 +54,7 @@ impl PyroApp {
         self.tab = all.remove(active);
         self.others = all;
         self.active = active;
-        self.tab.dirty = Dirty::All;
-        self.tab.sel_dirty = true;
+        // Cada pestaña conserva sus texturas: cambiar no vuelve a subir nada.
     }
 
     pub(super) fn switch_to(&mut self, i: usize) {
@@ -71,10 +69,16 @@ impl PyroApp {
     /// Añade una pestaña tras la activa y la activa. Una «Sin título» intacta
     /// (la del arranque) se sustituye en vez de quedar vacía detrás.
     pub(super) fn add_tab(&mut self, tab: Tab) {
+        // Una recuperada, con archivo o con cambios nunca es «intacta».
         let pristine = self.tab.untitled > 0
             && !self.tab.history.can_undo()
             && !self.tab.history.can_redo()
-            && self.tab.task.is_none();
+            && !self.tab.history.is_modified()
+            && self.tab.task.is_none()
+            && self.tab.save.is_none()
+            && self.tab.recovered_from.is_none()
+            && self.tab.ora_path.is_none()
+            && self.tab.source_path.is_none();
         let mut all = self.take_tabs();
         let at = if pristine {
             all[self.active] = tab;
@@ -103,6 +107,11 @@ impl PyroApp {
         }
         let at = self.active.min(all.len() - 1);
         self.put_tabs(all, at);
+    }
+
+    /// Posición de la pestaña con ese `uid`.
+    pub(super) fn tab_index(&self, uid: u64) -> Option<usize> {
+        (0..self.tab_count()).find(|&i| self.tab_at(i).uid == uid)
     }
 
     pub(super) fn next_untitled(&mut self) -> u32 {
