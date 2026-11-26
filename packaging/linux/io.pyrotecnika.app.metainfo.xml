@@ -25,6 +25,11 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.0" date="2026-11-26">
+      <description>
+        <p>Varios documentos en pestañas, guardado con capas en OpenRaster (.ora), autoguardado con recuperación tras un cierre inesperado y panel de historial. Paleta de comandos (Ctrl+K), atajos de teclado configurables y preferencias. Nuevo diseño neutro con temas claro, oscuro y de alto contraste. Abrir, filtrar y exportar ya no bloquean la ventana.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-11-16">
       <description>
         <p>Buscar actualizaciones desde el menú Ayuda, con verificación de firma. Nuevos paquetes MSI, PKG y RPM.</p>
